@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { dispatchBrandedRoleEmail } from "@/lib/email-service";
+import { syncUserToCloud, deleteUserFromCloud } from "@/lib/firebase-cloud";
 
 export interface RoleSpec {
   id: string;
@@ -205,6 +206,9 @@ export async function POST(req: NextRequest) {
         baseUrl: req.nextUrl?.origin || "http://localhost:3000",
       });
 
+      // Persist to Cloud Firestore & Auth
+      await syncUserToCloud(res.user);
+
       return NextResponse.json({
         success: true,
         message: `Password setup & reset link dispatched to ${email} for role ${role.replace("_", " ").toUpperCase()}.`,
@@ -229,6 +233,9 @@ export async function POST(req: NextRequest) {
       }
 
       const user = db.users.find((u) => u.id === userId);
+      if (user) {
+        await syncUserToCloud(user);
+      }
       return NextResponse.json({
         success: true,
         message: `Permissions granted. Account activated for ${user?.fullName} (${user?.role}).`,
@@ -260,6 +267,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "User not found or already deleted" }, { status: 404 });
       }
 
+      await deleteUserFromCloud(userId);
+
       return NextResponse.json({
         success: true,
         message: "Account deleted successfully from platform directory.",
@@ -280,6 +289,8 @@ export async function POST(req: NextRequest) {
         password: body.password || "DispatcH2026!",
         status: body.status || "active",
       });
+
+      await syncUserToCloud(newUser);
 
       return NextResponse.json({
         success: true,
@@ -307,6 +318,8 @@ export async function DELETE(req: NextRequest) {
     if (!success) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
+
+    await deleteUserFromCloud(userId);
 
     return NextResponse.json({
       success: true,

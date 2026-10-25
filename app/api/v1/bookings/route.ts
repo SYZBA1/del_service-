@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { syncBookingToCloud } from "@/lib/firebase-cloud";
 
 export async function GET(req: NextRequest) {
   try {
@@ -90,6 +91,9 @@ export async function POST(req: NextRequest) {
         contractDocumentType,
         items,
       });
+
+      // Synchronize booking and items to Cloud Firestore
+      await syncBookingToCloud({ ...result.booking, items: result.items });
 
       return NextResponse.json({
         success: true,

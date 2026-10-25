@@ -170,7 +170,7 @@ export default function StorefrontHomePage() {
     {
       id: "ast-001",
       name: "Toyota Land Cruiser 300 V8",
-      category: "cars",
+      category: "suvs",
       imageUrl: "https://images.unsplash.com/photo-1594502184342-2e12f877aa73?auto=format&fit=crop&w=800&q=80",
       specs: "Automatic • 7 Seats • 3.3L Twin Turbo Diesel • 4WD",
       priceEtb: "ETB 16,500",
@@ -182,7 +182,7 @@ export default function StorefrontHomePage() {
     {
       id: "ast-002",
       name: "Toyota Hilux GD-6 Double Cab",
-      category: "cars",
+      category: "suvs",
       imageUrl: "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80",
       specs: "Manual • 5 Seats • 2.8L Diesel • Heavy Field Offroad",
       priceEtb: "ETB 9,500",
@@ -262,6 +262,30 @@ export default function StorefrontHomePage() {
       badge: "Delegation Bus",
       badgeColor: "bg-blue-700 text-white font-bold",
       depot: "Kazanchis Super Hub",
+    },
+    {
+      id: "ast-009",
+      name: "Toyota Corolla Cross Hybrid",
+      category: "cars",
+      imageUrl: "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=800&q=80",
+      specs: "Automatic • 5 Seats • 1.8L Hybrid • City Mobility",
+      priceEtb: "ETB 6,000",
+      rateNumber: 6000,
+      badge: "Eco Hybrid",
+      badgeColor: "bg-emerald-600 text-white font-bold",
+      depot: "Kazanchis Super Hub",
+    },
+    {
+      id: "ast-010",
+      name: "Toyota Fortuner 2.8 4x4 VRZ",
+      category: "suvs",
+      imageUrl: "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80",
+      specs: "Automatic • 7 Seats • 2.8L Diesel • 4x4 Field Luxury",
+      priceEtb: "ETB 12,500",
+      rateNumber: 12500,
+      badge: "Site 4x4",
+      badgeColor: "bg-amber-600 text-white font-bold",
+      depot: "Bole Atlas Hub",
     },
   ];
 
@@ -659,7 +683,18 @@ export default function StorefrontHomePage() {
                   : "bg-[#0a0a0a] border-neutral-800 text-neutral-400 hover:text-white hover:bg-[#121212]"
               )}
             >
-              Passenger Cars & 4x4 ({fleetData.filter(f => f.category === "cars").length})
+              Passenger Cars (Local Cars) ({fleetData.filter(f => f.category === "cars").length})
+            </button>
+            <button
+              onClick={() => setActiveCategory("suvs")}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer",
+                activeCategory === "suvs"
+                  ? "bg-[#df2531] text-white border-[#df2531] shadow-md shadow-[#df2531]/30 font-black"
+                  : "bg-[#0a0a0a] border-neutral-800 text-neutral-400 hover:text-white hover:bg-[#121212]"
+              )}
+            >
+              4×4 SUVs (Site Cars) ({fleetData.filter(f => f.category === "suvs").length})
             </button>
             <button
               onClick={() => setActiveCategory("machinery")}

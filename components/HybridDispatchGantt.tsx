@@ -25,6 +25,8 @@ import {
   X,
   Search,
   Download,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { cn, formatETB } from "@/lib/utils";
 import { Asset, User, BookingItem, BookingStatus } from "@/lib/types";
@@ -44,6 +46,7 @@ export function HybridDispatchGantt() {
   const [activeTab, setActiveTab] = useState<"all" | "machinery" | "cars" | "operators">("all");
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [selectedDispatchDoc, setSelectedDispatchDoc] = useState<any | null>(null);
+  const [ganttDocZoom, setGanttDocZoom] = useState(1);
   const [manifestSearch, setManifestSearch] = useState<string>("");
   const [manifestFilter, setManifestFilter] = useState<string>("all");
 
@@ -701,7 +704,7 @@ export function HybridDispatchGantt() {
       {/* Interactive Modal for Dispatch Attachment PDF / Image */}
       {selectedDispatchDoc && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn text-neutral-200">
-          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-4">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
               <div className="flex items-center gap-2">
@@ -728,90 +731,96 @@ export function HybridDispatchGantt() {
               </button>
             </div>
 
-            {/* Modal Body */}
+            {/* Modal Body: Image Preview or Real PDF Viewer */}
             {selectedDispatchDoc.attachment.type === "image" ? (
-              <div className="space-y-4">
-                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[300px] overflow-hidden">
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[350px] max-h-[60vh] overflow-hidden relative group">
                   <img
                     src={selectedDispatchDoc.attachment.url}
                     alt={selectedDispatchDoc.attachment.name}
-                    className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60"
+                    style={{ transform: `scale(${ganttDocZoom})` }}
+                    className="max-h-[55vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60 transition-transform duration-200"
                   />
                 </div>
                 <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
-                  <div>
-                    <div className="text-white font-bold">{selectedDispatchDoc.attachment.name}</div>
-                    <div className="text-[11px] text-neutral-400">
-                      Dispatched Asset: {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model} ({selectedDispatchDoc.asset?.plateNumber || "SP-Series"})
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <ImageIcon size={16} className="text-[#df2531] shrink-0" />
+                    <div>
+                      <div className="text-white font-bold truncate">{selectedDispatchDoc.attachment.name}</div>
+                      <div className="text-[10px] text-neutral-400">
+                        Dispatched Asset: {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model} ({selectedDispatchDoc.asset?.plateNumber || "SP-Series"})
+                      </div>
                     </div>
                   </div>
-                  {selectedDispatchDoc.attachment.url && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 bg-black p-1 rounded-lg border border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => setGanttDocZoom((z) => Math.max(0.5, z - 0.25))}
+                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                        title="Zoom out"
+                      >
+                        <ZoomOut size={13} />
+                      </button>
+                      <span className="px-1 text-[10px] font-mono font-bold text-neutral-300">{Math.round(ganttDocZoom * 100)}%</span>
+                      <button
+                        type="button"
+                        onClick={() => setGanttDocZoom((z) => Math.min(2.5, z + 0.25))}
+                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                        title="Zoom in"
+                      >
+                        <ZoomIn size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGanttDocZoom(1)}
+                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300 text-[10px]"
+                        title="Reset zoom"
+                      >
+                        Reset
+                      </button>
+                    </div>
                     <a
                       href={selectedDispatchDoc.attachment.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs flex items-center gap-1.5 font-sans"
+                      download={selectedDispatchDoc.attachment.name}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
                     >
-                      <ExternalLink size={13} /> Open Full
+                      <Download size={13} /> Download
                     </a>
-                  )}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
-                <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
-                  ★ NOTARIZED & STAMPED ★
+              <div className="space-y-3">
+                <div className="w-full h-[520px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
+                  <iframe
+                    src={selectedDispatchDoc.attachment.url || "/contracts/guarantor-legal-affidavit.pdf"}
+                    className="w-full h-full rounded-xl bg-neutral-900 border-0"
+                    title={selectedDispatchDoc.attachment.name}
+                  />
                 </div>
-
-                <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
-                  <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
-                    FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <FileText size={16} className="text-[#df2531] shrink-0" />
+                    <div>
+                      <div className="font-bold text-white truncate">{selectedDispatchDoc.attachment.name}</div>
+                      <div className="text-[10px] text-neutral-400">
+                        {selectedDispatchDoc.booking?.renterName ? `Lessee: ${selectedDispatchDoc.booking.renterName} • ` : ""}
+                        Asset: {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-[#df2531] font-bold font-display">
-                    DOCUMENTS REGISTRATION & NOTARIAL SERVICE
-                  </div>
-                  <div className="text-[10px] text-neutral-400">
-                    Official Dispatch Manifest Contract Archive • Case Ref: ET-NOTARY-2026-B8841029
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-[11px] text-neutral-300">
-                  <div>
-                    <span className="text-neutral-400">Contract Title: </span>
-                    <strong>COMMERCIAL EQUIPMENT LEASE & SURETY AGREEMENT</strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400">Renter / Lessee: </span>
-                    <strong className="text-white">{selectedDispatchDoc.booking?.renterName || "MIDROC Construction Ethiopia"}</strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400">Dispatched Asset: </span>
-                    <strong className="text-white">
-                      {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model} ({selectedDispatchDoc.asset?.plateNumber || selectedDispatchDoc.asset?.chassisOrSerialNumber})
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400">Assigned Operator: </span>
-                    <strong className="text-white">{selectedDispatchDoc.operator?.fullName || "Client Certified Driver"}</strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400">Rental Period: </span>
-                    <span className="text-emerald-400">
-                      {new Date(selectedDispatchDoc.rentalPeriodStart).toLocaleDateString()} to {new Date(selectedDispatchDoc.rentalPeriodEnd).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400">Archive File: </span>
-                    <span className="text-white font-bold">{selectedDispatchDoc.attachment.name} ({selectedDispatchDoc.attachment.size})</span>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
-                  <div className="flex items-center gap-1 text-emerald-400">
-                    <ShieldCheck size={14} />
-                    <span>Federal Notary Seal Digitally Anchored</span>
-                  </div>
-                  <span>Verified: {new Date(selectedDispatchDoc.rentalPeriodStart).toLocaleDateString()}</span>
+                  <a
+                    href={selectedDispatchDoc.attachment.url || "/contracts/guarantor-legal-affidavit.pdf"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={selectedDispatchDoc.attachment.name}
+                    className="shrink-0 px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
+                  >
+                    <Download size={13} /> Download / Open Original File
+                  </a>
                 </div>
               </div>
             )}

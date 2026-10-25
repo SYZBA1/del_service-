@@ -20,9 +20,14 @@ import {
   Eye,
   X,
   ExternalLink,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn, formatETB, formatFaydaFin } from "@/lib/utils";
 import { useTenant } from "@/context/TenantContext";
+import { uploadFileToStorage } from "@/lib/firebase-cloud";
 
 interface CollateralVaultProps {
   bookingId?: string;
@@ -71,6 +76,7 @@ export function CollateralAndGuarantorVault({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [vaultZoom, setVaultZoom] = useState(1);
 
   React.useEffect(() => {
     if (onContractUploaded) {
@@ -80,23 +86,42 @@ export function CollateralAndGuarantorVault({
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const processUploadedFile = (file: File) => {
+  const processUploadedFile = async (file: File) => {
     const sizeStr = file.size > 1024 * 1024 
       ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
       : `${Math.round(file.size / 1024)} KB`;
-    const url = URL.createObjectURL(file);
+    const localUrl = URL.createObjectURL(file);
     const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
     const fileType: 'pdf' | 'image' = isImage ? 'image' : 'pdf';
+    
+    // Immediate preview
     const info = {
       fileName: file.name,
       fileSize: sizeStr,
-      fileUrl: url,
+      fileUrl: localUrl,
       fileType,
       uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setUploadedContract(info);
     if (onContractUploaded) {
       onContractUploaded(info);
+    }
+
+    // Background Firebase Cloud Storage upload
+    try {
+      const storageUrl = await uploadFileToStorage(file, `kyc-documents/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`);
+      if (storageUrl && storageUrl !== localUrl) {
+        const cloudInfo = {
+          ...info,
+          fileUrl: storageUrl,
+        };
+        setUploadedContract(cloudInfo);
+        if (onContractUploaded) {
+          onContractUploaded(cloudInfo);
+        }
+      }
+    } catch (e) {
+      console.warn("Storage upload fallback used", e);
     }
   };
 
@@ -406,13 +431,22 @@ export function CollateralAndGuarantorVault({
           {/* Scanned Guarantee Contract / Image Preview Modal */}
           {isPreviewOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-neutral-200 space-y-4">
+              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 text-neutral-200 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
                   <div className="flex items-center gap-2">
-                    <FileText className="text-[#df2531]" size={18} />
-                    <h3 className="font-bold text-white text-sm font-display">
-                      {uploadedContract.fileType === "image" ? "Scanned Collateral Image / Photo" : "Official Scanned Notarized Guarantee Document"}
-                    </h3>
+                    {uploadedContract.fileType === "image" ? (
+                      <ImageIcon className="text-[#df2531]" size={20} />
+                    ) : (
+                      <FileText className="text-[#df2531]" size={20} />
+                    )}
+                    <div>
+                      <h3 className="font-bold text-white text-sm font-display">
+                        {uploadedContract.fileName}
+                      </h3>
+                      <p className="text-[10px] text-neutral-400">
+                        Attached Document Archive • {uploadedContract.fileSize} • Uploaded {uploadedContract.uploadedAt}
+                      </p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setIsPreviewOpen(false)}
@@ -422,100 +456,94 @@ export function CollateralAndGuarantorVault({
                   </button>
                 </div>
 
-                {/* If Image: Render high-resolution preview */}
+                {/* If Image: Render high-resolution preview with zoom */}
                 {uploadedContract.fileType === "image" ? (
-                  <div className="space-y-4">
-                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[300px] overflow-hidden">
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[350px] max-h-[60vh] overflow-hidden relative group">
                       <img
                         src={uploadedContract.fileUrl}
                         alt={uploadedContract.fileName}
-                        className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60"
+                        style={{ transform: `scale(${vaultZoom})` }}
+                        className="max-h-[55vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60 transition-transform duration-200"
                       />
                     </div>
                     <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
-                      <div>
-                        <div className="text-white font-bold">{uploadedContract.fileName}</div>
-                        <div className="text-[11px] text-neutral-400">{uploadedContract.fileSize} • Uploaded {uploadedContract.uploadedAt}</div>
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <ImageIcon size={16} className="text-[#df2531] shrink-0" />
+                        <div>
+                          <div className="text-white font-bold truncate">{uploadedContract.fileName}</div>
+                          <div className="text-[10px] text-neutral-400">{uploadedContract.fileSize} • Uploaded {uploadedContract.uploadedAt}</div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold uppercase">
-                          Verified Image
-                        </span>
-                        {uploadedContract.fileUrl && (
-                          <a
-                            href={uploadedContract.fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={uploadedContract.fileName}
-                            className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] flex items-center gap-1 font-sans"
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1 bg-black p-1 rounded-lg border border-neutral-800">
+                          <button
+                            type="button"
+                            onClick={() => setVaultZoom((z) => Math.max(0.5, z - 0.25))}
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                            title="Zoom out"
                           >
-                            <ExternalLink size={12} /> Open Full
-                          </a>
-                        )}
+                            <ZoomOut size={13} />
+                          </button>
+                          <span className="px-1 text-[10px] font-mono font-bold text-neutral-300">{Math.round(vaultZoom * 100)}%</span>
+                          <button
+                            type="button"
+                            onClick={() => setVaultZoom((z) => Math.min(2.5, z + 0.25))}
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                            title="Zoom in"
+                          >
+                            <ZoomIn size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVaultZoom(1)}
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-300 text-[10px]"
+                            title="Reset zoom"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                        <a
+                          href={uploadedContract.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={uploadedContract.fileName}
+                          className="px-3 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
+                        >
+                          <Download size={13} /> Download
+                        </a>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  /* If PDF: Document Scanned Mock View */
-                  <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
-                    {/* Federal Seal Watermark */}
-                    <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
-                      ★ NOTARIZED & STAMPED ★
+                  /* If PDF: Embedded Real PDF Iframe */
+                  <div className="space-y-3">
+                    <div className="w-full h-[520px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
+                      <iframe
+                        src={uploadedContract.fileUrl || "/contracts/guarantor-legal-affidavit.pdf"}
+                        className="w-full h-full rounded-xl bg-neutral-900 border-0"
+                        title={uploadedContract.fileName}
+                      />
                     </div>
-
-                    <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
-                      <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
-                        FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <FileText size={16} className="text-[#df2531] shrink-0" />
+                        <div>
+                          <div className="font-bold text-white truncate">{uploadedContract.fileName}</div>
+                          <div className="text-[10px] text-neutral-400">
+                            {uploadedContract.fileSize} • Principal: {renterName} • Asset: {assetName}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-[#df2531] font-bold font-display">
-                        DOCUMENTS REGISTRATION & NOTARIAL SERVICE
-                      </div>
-                      <div className="text-[10px] text-neutral-400">
-                        Case File No: ET-NOTARY-2026-B8841029 • Woreda 03 Registry
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-[11px] text-neutral-300">
-                      <div>
-                        <span className="text-neutral-400">Document Title: </span>
-                        <strong>IRREVOCABLE COMMERCIAL SURETYSHIP & GUARANTEE AGREEMENT</strong>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Governing Law: </span>
-                        Ethiopian Civil Code Articles 1920–1951 (Suretyship)
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Guaranteed Principal: </span>
-                        <strong className="text-white">{renterName}</strong>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Legal Guarantor: </span>
-                        <strong className="text-white">{guarantorFullName}</strong> (Phone: {guarantorPhone})
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">VeriFayda Digital FIN: </span>
-                        <span className="text-emerald-400 font-bold">{guarantorFaydaFin}</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Leased Equipment: </span>
-                        <strong className="text-white">{assetName}</strong>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Security Guarantee Amount: </span>
-                        <strong className="text-[#df2531] font-display">{formatETB(amount)}</strong>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400">Attached File: </span>
-                        <span className="text-neutral-300">{uploadedContract.fileName} ({uploadedContract.fileSize})</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
-                      <div className="flex items-center gap-1 text-emerald-400">
-                        <ShieldCheck size={14} />
-                        <span>Court Registrar Digital Signature Verified</span>
-                      </div>
-                      <span>Timestamp: {uploadedContract.uploadedAt}</span>
+                      <a
+                        href={uploadedContract.fileUrl || "/contracts/guarantor-legal-affidavit.pdf"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={uploadedContract.fileName}
+                        className="shrink-0 px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
+                      >
+                        <Download size={13} /> Download / Open Original File
+                      </a>
                     </div>
                   </div>
                 )}

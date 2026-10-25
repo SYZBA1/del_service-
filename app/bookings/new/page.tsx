@@ -64,7 +64,7 @@ export default function NewBookingWizardPage() {
   // Wizard State - Step 1: Dates & Asset Bundle
   const [startDate, setStartDate] = useState("2026-10-25T08:00");
   const [endDate, setEndDate] = useState("2026-10-30T18:00");
-  const [selectedAssetCategoryTab, setSelectedAssetCategoryTab] = useState<"all" | "cars" | "machinery" | "power">("all");
+  const [selectedAssetCategoryTab, setSelectedAssetCategoryTab] = useState<"all" | "passenger_cars" | "suv_4x4" | "machinery" | "power">("all");
   const [selectedAssetId, setSelectedAssetId] = useState<string>("ast-004"); // CAT 320D
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<string>(""); // None by default (only included when chosen)
   const [pickupLocation, setPickupLocation] = useState("Bole Central Yard, Addis Ababa");
@@ -193,7 +193,8 @@ export default function NewBookingWizardPage() {
   }, [selectedAsset?.id, selectedAsset?.currentMeterReading, selectedAsset?.category]);
 
   // Filter Categorized Assets
-  const cars = assets.filter((a) => a.category === "passenger_car" || a.category === "commercial_van");
+  const passengerCars = assets.filter((a) => a.category === "passenger_car");
+  const suv4x4 = assets.filter((a) => a.category === "suv_4x4" || a.category === "commercial_van");
   const heavyMachinery = assets.filter((a) => a.category === "heavy_machinery");
   const powerEquipment = assets.filter((a) => a.category === "power_equipment");
 
@@ -673,7 +674,8 @@ export default function NewBookingWizardPage() {
                 <div className="flex items-center rounded-lg border border-[#222222] bg-black p-0.5">
                   {[
                     { id: "all", label: "All Fleet", icon: Truck },
-                    { id: "cars", label: "Cars & SUVs", icon: Car },
+                    { id: "passenger_cars", label: "Passenger Cars", icon: Car },
+                    { id: "suv_4x4", label: "4×4 SUVs", icon: Truck },
                     { id: "machinery", label: "Heavy Machinery", icon: Truck },
                     { id: "power", label: "Power & Generators", icon: Zap },
                   ].map((t) => (
@@ -706,14 +708,26 @@ export default function NewBookingWizardPage() {
               </div>
             )}
 
-            {/* Render Category 2: Passenger Cars & 4x4 SUVs */}
-            {(selectedAssetCategoryTab === "all" || selectedAssetCategoryTab === "cars") && (
+            {/* Render Category 2: 4x4 SUVs (Site Cars) */}
+            {(selectedAssetCategoryTab === "all" || selectedAssetCategoryTab === "suv_4x4") && (
               <div className="space-y-2 pt-4">
-                <div className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Car size={14} /> Passenger Vehicles & 4x4 Field Pickups
+                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Truck size={14} /> 4×4 SUVs (Site Cars)
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {cars.map(renderAssetCard)}
+                  {suv4x4.map(renderAssetCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Render Category 3: Passenger Cars (Local Cars) */}
+            {(selectedAssetCategoryTab === "all" || selectedAssetCategoryTab === "passenger_cars") && (
+              <div className="space-y-2 pt-4">
+                <div className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Car size={14} /> Passenger Cars (Local Cars)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {passengerCars.map(renderAssetCard)}
                 </div>
               </div>
             )}

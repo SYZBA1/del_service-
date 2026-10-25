@@ -257,42 +257,7 @@ export function AppSidebar() {
         </div>
       )}
 
-      {/* User Profile Badge */}
-      {!collapsed && (
-        <div className="mx-3 my-2 p-2.5 rounded-xl bg-neutral-100 dark:bg-[#0a0a0a] border border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#df2531] to-[#7f1118] flex items-center justify-center font-bold text-white text-xs shadow-md shadow-[#df2531]/30">
-              {currentUser?.fullName?.split(" ").map((n) => n[0]).join("") || "HD"}
-            </div>
-            <div className="text-left">
-              <div className="font-bold text-neutral-900 dark:text-white text-xs truncate w-24">
-                {currentUser?.fullName || "Head Dispatcher"}
-              </div>
-              <div className="text-[10px] text-[#df2531] font-medium truncate w-28">
-                {currentUser?.role === "head_dispatcher"
-                  ? "Head Dispatcher"
-                  : currentUser?.role === "elshaday_admin"
-                  ? "Elshaday Admin"
-                  : currentUser?.role === "liora_admin"
-                  ? "Liora Admin"
-                  : currentUser?.role === "dalol_admin"
-                  ? "Dalol Admin"
-                  : "Platform Control"}
-              </div>
-            </div>
-          </div>
-          {currentUser?.role === "head_dispatcher" && (
-            <Link
-              href="/permissions"
-              onClick={closeMobileSidebar}
-              className="p-1.5 rounded-lg bg-neutral-200 dark:bg-neutral-800 hover:bg-[#df2531]/20 text-neutral-700 dark:text-neutral-300 hover:text-[#df2531] transition-colors"
-              title="Permissions & Roles"
-            >
-              <Shield size={14} />
-            </Link>
-          )}
-        </div>
-      )}
+
 
       {/* Ethiopian Rails System Footnote */}
       {!collapsed && (

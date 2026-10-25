@@ -467,7 +467,7 @@ export const INITIAL_ASSETS: Asset[] = [
   {
     id: "ast-001",
     ownerId: "tenant-001",
-    category: "passenger_car",
+    category: "suv_4x4",
     make: "Toyota",
     model: "Land Cruiser 300 V8 GR-Sport",
     manufactureYear: 2024,
@@ -505,7 +505,7 @@ export const INITIAL_ASSETS: Asset[] = [
   {
     id: "ast-002",
     ownerId: "tenant-001",
-    category: "commercial_van",
+    category: "suv_4x4",
     make: "Toyota",
     model: "Hilux Double Cab 4x4 GD-6",
     manufactureYear: 2023,
@@ -888,7 +888,7 @@ export const INITIAL_ASSETS: Asset[] = [
   {
     id: "ast-012",
     ownerId: "tenant-001",
-    category: "passenger_car",
+    category: "suv_4x4",
     make: "Toyota",
     model: "Fortuner 2.8 4x4 VRZ Luxury",
     manufactureYear: 2024,

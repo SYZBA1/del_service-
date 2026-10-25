@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { syncNotificationToCloud } from "@/lib/firebase-cloud";
 
 export async function GET(req: NextRequest) {
   try {
@@ -52,6 +53,9 @@ export async function POST(req: NextRequest) {
       contractFileSize,
     });
 
+    // Synchronize notification to Cloud Firestore
+    await syncNotificationToCloud(notif);
+
     return NextResponse.json(
       {
         success: true,
@@ -85,10 +89,14 @@ export async function PATCH(req: NextRequest) {
     if (action === "approve") {
       const ok = db.approveKycNotification(id, approverName);
       if (!ok) return NextResponse.json({ error: "Notification not found" }, { status: 404 });
+      const updated = db.notifications.find((n) => n.id === id);
+      if (updated) await syncNotificationToCloud(updated);
       return NextResponse.json({ success: true, message: `Notification ${id} approved by ${approverName}` });
     } else if (action === "read") {
       const ok = db.markNotificationRead(id);
       if (!ok) return NextResponse.json({ error: "Notification not found" }, { status: 404 });
+      const updated = db.notifications.find((n) => n.id === id);
+      if (updated) await syncNotificationToCloud(updated);
       return NextResponse.json({ success: true, message: `Notification ${id} marked as read` });
     }
 

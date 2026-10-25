@@ -36,7 +36,7 @@ export default function FleetRegistryPage() {
   const { activeTenantId, searchQuery: globalSearch, currentUser } = useTenant();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeMainCategory, setActiveMainCategory] = useState<"all" | "cars" | "machinery">("all");
+  const [activeMainCategory, setActiveMainCategory] = useState<"all" | "passenger_cars" | "suv_4x4" | "machinery">("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [localSearch, setLocalSearch] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -219,8 +219,11 @@ export default function FleetRegistryPage() {
   });
 
   // Separate Lists
-  const carsList = filteredAssets.filter(
-    (a) => a.category === "passenger_car" || a.category === "commercial_van"
+  const passengerCarsList = filteredAssets.filter(
+    (a) => a.category === "passenger_car"
+  );
+  const suv4x4List = filteredAssets.filter(
+    (a) => a.category === "suv_4x4" || a.category === "commercial_van"
   );
   const machineryList = filteredAssets.filter(
     (a) => a.category === "heavy_machinery" || a.category === "power_equipment" || a.category === "attachment"
@@ -462,7 +465,8 @@ export default function FleetRegistryPage() {
         <div className="flex items-center gap-2">
           {[
             { id: "all", label: "All Fleet Assets", count: assets.length },
-            { id: "cars", label: "Passenger Cars & 4x4 SUVs", count: carsList.length },
+            { id: "passenger_cars", label: "Passenger Cars (Local Cars)", count: passengerCarsList.length },
+            { id: "suv_4x4", label: "4×4 SUVs (Site Cars)", count: suv4x4List.length },
             { id: "machinery", label: "Heavy Construction Machinery", count: machineryList.length },
           ].map((tab) => (
             <button
@@ -526,12 +530,21 @@ export default function FleetRegistryPage() {
             )
           )}
 
-          {(activeMainCategory === "all" || activeMainCategory === "cars") && (
+          {(activeMainCategory === "all" || activeMainCategory === "suv_4x4") && (
             renderAssetTable(
-              "Passenger Cars, Executive Sedans & 4x4 SUVs",
+              "4×4 SUVs (Site Cars)",
+              Truck,
+              suv4x4List,
+              "Field Engineering & Site Mobility Fleet"
+            )
+          )}
+
+          {(activeMainCategory === "all" || activeMainCategory === "passenger_cars") && (
+            renderAssetTable(
+              "Passenger Cars (Local Cars)",
               Car,
-              carsList,
-              "Urban & Regional Mobility Fleet"
+              passengerCarsList,
+              "Urban City & Local Mobility Fleet"
             )
           )}
         </div>

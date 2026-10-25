@@ -17,6 +17,7 @@ export type OwnerTier =
 
 export type AssetCategory = 
   | 'passenger_car'
+  | 'suv_4x4'
   | 'commercial_van'
   | 'heavy_machinery'
   | 'power_equipment'

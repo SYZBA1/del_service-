@@ -83,7 +83,7 @@ export function PolymorphicAssetForm({
 
   // Auto-adapt meter unit when category switches
   const meterUnit: MeterUnit =
-    category === "passenger_car" || category === "commercial_van"
+    category === "passenger_car" || category === "commercial_van" || category === "suv_4x4"
       ? "odometer_km"
       : category === "attachment"
       ? "calendar_days_only"
@@ -92,14 +92,14 @@ export function PolymorphicAssetForm({
   const handleCategoryChange = (newCat: AssetCategory) => {
     setCategory(newCat);
     if (newCat === "passenger_car") {
-      setMake("BTD");
-      setModel("Segule");
-      setPlateNumber("3-B99210 AA");
+      setMake("Toyota");
+      setModel("Corolla Cross Hybrid");
+      setPlateNumber("2-C11904 AA");
       setChassisOrSerialNumber("CAT320D-ET-2023-99");
       setLibreCertificateNo("LIB-ET-2023-998");
-      setDailyRate(3000);
-      setOvertimeRatePerUnit(45);
-      setSecurityDepositAmount(150000);
+      setDailyRate(6000);
+      setOvertimeRatePerUnit(35);
+      setSecurityDepositAmount(30000);
       setCurrentMeterReading(12000);
       setRequiresCompanyOperator(false);
       setOperatorDailyRate(0);
@@ -109,6 +109,24 @@ export function PolymorphicAssetForm({
       setSeats(5);
       setFuelType("electric");
       setDailyKmLimit(200);
+    } else if (newCat === "suv_4x4") {
+      setMake("Toyota");
+      setModel("Hilux Double Cab 4x4 GD-6");
+      setPlateNumber("3-B77123 AA");
+      setChassisOrSerialNumber("JTMHT01J704098124");
+      setLibreCertificateNo("LIB-ET-2024-9981");
+      setDailyRate(12500);
+      setOvertimeRatePerUnit(45);
+      setSecurityDepositAmount(100000);
+      setCurrentMeterReading(24500);
+      setRequiresCompanyOperator(false);
+      setOperatorDailyRate(1500);
+      setOperatorPerDiemRate(1200);
+      setDefaultMobilizationFee(0);
+      setTransmission("automatic");
+      setSeats(5);
+      setFuelType("diesel");
+      setDailyKmLimit(250);
     } else if (newCat === "commercial_van") {
       setMake("Toyota");
       setModel("Hilux Double Cab 4x4");
@@ -187,6 +205,8 @@ export function PolymorphicAssetForm({
         requiresCompanyOperator,
         primaryImageUrl:
           category === "passenger_car"
+            ? "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=800&q=80"
+            : category === "suv_4x4"
             ? "https://images.unsplash.com/photo-1594502184342-2e12f877aa73?auto=format&fit=crop&w=800&q=80"
             : category === "commercial_van"
             ? "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80"
@@ -202,7 +222,7 @@ export function PolymorphicAssetForm({
                 idleDayMinimumHours,
                 hydraulicAuxLines,
               }
-            : category === "passenger_car" || category === "commercial_van"
+            : category === "passenger_car" || category === "commercial_van" || category === "suv_4x4"
             ? {
                 transmission,
                 seats,
@@ -266,9 +286,9 @@ export function PolymorphicAssetForm({
         <label className="font-bold text-white text-sm font-display">Asset Category Type</label>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {[
-            { id: "heavy_machinery", label: "Heavy Machinery", desc: "Hours + Tonnage" },
-            { id: "passenger_car", label: "Passenger Car", desc: "KM + Fuel + Seats" },
-            { id: "commercial_van", label: "Commercial / 4x4", desc: "Field Double Cab" },
+            { id: "passenger_car", label: "Passenger Cars (Local Cars)", desc: "Corolla, Crossovers & City Cars" },
+            { id: "suv_4x4", label: "4×4 SUVs (Site Cars)", desc: "Hilux, LC300, Prado 4WD" },
+            { id: "heavy_machinery", label: "Heavy Construction Machinery", desc: "Hours + Tonnage Rigs" },
             { id: "attachment", label: "Attachment", desc: "Breakers & Buckets" },
           ].map((cat) => (
             <button
@@ -353,7 +373,7 @@ export function PolymorphicAssetForm({
       </div>
 
       {/* Dynamic Section 2: Specs (Image 1 reference) */}
-      {(category === "passenger_car" || category === "commercial_van") && (
+      {(category === "passenger_car" || category === "commercial_van" || category === "suv_4x4") && (
         <div className="bg-[#0A0A0A] p-4 rounded-xl border border-[#222222] space-y-3">
           <div className="flex items-center justify-between border-b border-[#222222] pb-2">
             <span className="font-bold text-[#df2531] flex items-center gap-1.5 font-display">

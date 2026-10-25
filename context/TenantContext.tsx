@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { FleetOwner, User, SystemNotification } from "@/lib/types";
 import { Bell, Check, UserCheck, X, ShieldAlert, Sparkles } from "lucide-react";
 
@@ -92,6 +93,7 @@ function playChime() {
 }
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [activeTenantId, setActiveTenantId] = useState<string>("all");
   const [activePhase, setActivePhase] = useState<"phase1_erp" | "phase2_p2p">("phase1_erp");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -102,6 +104,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [latestLiveAlert, setLatestLiveAlert] = useState<SystemNotification | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
+
+  const isPublicRoute = pathname === "/" || pathname === "/login" || pathname === "/reset-password";
+  const isSuperAdmin = currentUser?.role === "head_dispatcher" || (currentUser as any)?.role === "super_admin";
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen((prev) => !prev);
   const closeMobileSidebar = () => setIsMobileSidebarOpen(false);
@@ -248,7 +253,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        if (foundNewPending && triggerAlertSound) {
+        if (foundNewPending && triggerAlertSound && !isPublicRoute && isSuperAdmin) {
           playChime();
           setLatestLiveAlert(foundNewPending);
         }
@@ -265,7 +270,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       fetchNotifications(true);
     }, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [pathname, currentUser]);
 
   const sendNotification = async (notifData: any) => {
     try {
@@ -276,8 +281,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       });
       const json = await res.json();
       if (json.success) {
-        setLatestLiveAlert(json.data);
-        playChime();
+        if (!isPublicRoute && isSuperAdmin) {
+          setLatestLiveAlert(json.data);
+          playChime();
+        }
         await fetchNotifications(false);
         return json.data;
       }
@@ -472,8 +479,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
 
-      {/* Real-time Interactive Floating KYC & Dispatcher Notification Toast (Brand Color #df2531) */}
-      {latestLiveAlert && (
+      {/* Real-time Interactive Floating KYC & Dispatcher Notification Toast (Brand Color #df2531) - Restricted to Super Admin inside internal ERP */}
+      {!isPublicRoute && isSuperAdmin && latestLiveAlert && (
         <div className="fixed bottom-6 right-6 z-50 max-w-md w-full p-4 rounded-2xl bg-[#0D0E12] dark:bg-[#0A0A0A] border-2 border-[#df2531] shadow-2xl shadow-[#df2531]/40 text-white animate-bounce duration-300">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">

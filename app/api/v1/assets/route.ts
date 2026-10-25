@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Asset, AssetRateCard } from "@/lib/types";
+import { syncAssetToCloud, deleteAssetFromCloud } from "@/lib/firebase-cloud";
 
 export async function GET(req: NextRequest) {
   try {
@@ -116,6 +117,12 @@ export async function POST(req: NextRequest) {
       db.rateCards[newAsset.id] = newRateCard;
     }
 
+    // Persist to Cloud Firestore
+    await syncAssetToCloud({
+      ...newAsset,
+      rateCard: db.getRateCard(newAsset.id),
+    });
+
     return NextResponse.json({
       success: true,
       message: "Asset and Rate Card registered successfully",
@@ -143,6 +150,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: `Asset with ID ${id} not found` }, { status: 404 });
     }
 
+    // Persist updated asset to Cloud Firestore
+    await syncAssetToCloud({
+      ...updated,
+      rateCard: db.getRateCard(updated.id),
+    });
+
     return NextResponse.json({
       success: true,
       message: `Asset ${updated.make} ${updated.model} updated successfully`,
@@ -169,6 +182,9 @@ export async function DELETE(req: NextRequest) {
     if (!ok) {
       return NextResponse.json({ error: `Asset with ID ${id} not found` }, { status: 404 });
     }
+
+    // Delete from Cloud Firestore
+    await deleteAssetFromCloud(id);
 
     return NextResponse.json({
       success: true,
