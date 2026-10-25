@@ -31,8 +31,11 @@ import {
   X,
   Phone,
   MapPin,
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
 import { formatETB, cn } from "@/lib/utils";
+import { PaymentReportModal } from "@/components/PaymentReportModal";
 
 type TimeRange = "daily" | "weekly" | "monthly" | "annually";
 
@@ -44,6 +47,7 @@ export default function ElshadayPaymentModulePage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
   const [selectedBooking, setSelectedBooking] = useState<any | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const fetchFinanceData = async () => {
     try {
@@ -265,25 +269,36 @@ export default function ElshadayPaymentModulePage() {
           </div>
         </div>
 
-        {/* Time Filter Buttons */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black border border-white/10">
-          {(["daily", "weekly", "monthly", "annually"] as TimeRange[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setTimeRange(tab)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer font-display",
-                timeRange === tab
-                  ? "bg-[#df2531] text-white shadow-md shadow-[#df2531]/20"
-                  : "text-neutral-400 hover:text-white hover:bg-neutral-800"
-              )}
-            >
-              {tab === "daily" && "Daily"}
-              {tab === "weekly" && "Weekly"}
-              {tab === "monthly" && "Monthly"}
-              {tab === "annually" && "Annually"}
-            </button>
-          ))}
+        {/* Controls: Time Filter Buttons & Print/Export Button */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black border border-white/10">
+            {(["daily", "weekly", "monthly", "annually"] as TimeRange[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setTimeRange(tab)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer font-display",
+                  timeRange === tab
+                    ? "bg-[#df2531] text-white shadow-md shadow-[#df2531]/20"
+                    : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+                )}
+              >
+                {tab === "daily" && "Daily"}
+                {tab === "weekly" && "Weekly"}
+                {tab === "monthly" && "Monthly"}
+                {tab === "annually" && "Annually"}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsReportOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 transition-all font-display cursor-pointer"
+          >
+            <Printer size={14} />
+            <span>Print / Export Payment Report</span>
+          </button>
         </div>
       </div>
 
@@ -861,6 +876,15 @@ export default function ElshadayPaymentModulePage() {
           </div>
         </div>
       )}
+
+      {/* Official Printed / Exportable Payment Report Modal */}
+      <PaymentReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        role="elshaday"
+        initialPeriod={timeRange}
+        invoices={invoices}
+      />
     </div>
   );
 }

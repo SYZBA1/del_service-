@@ -309,6 +309,10 @@ export interface Booking {
   roundTripDistanceKm?: number;
   agreedDealKm?: number;
   isOutOfCity: boolean;
+  contractDocumentUrl?: string;
+  contractDocumentName?: string;
+  contractDocumentSize?: string;
+  contractDocumentType?: 'pdf' | 'image';
   createdAt: string;
   items?: BookingItem[];
   collateral?: BookingCollateral;
@@ -363,6 +367,7 @@ export interface BookingCollateral {
   contractDocumentUrl?: string;
   contractDocumentName?: string;
   contractDocumentSize?: string;
+  contractDocumentType?: 'pdf' | 'image';
   contractUploadedAt?: string;
   isVerified: boolean;
   verifiedByUserId?: string;
@@ -463,6 +468,8 @@ export interface SystemNotification {
   collateralType?: string;
   contractFileName?: string;
   contractFileSize?: string;
+  contractFileUrl?: string;
+  contractFileType?: 'pdf' | 'image';
   status: 'pending' | 'approved' | 'rejected';
   read: boolean;
   createdAt: string;

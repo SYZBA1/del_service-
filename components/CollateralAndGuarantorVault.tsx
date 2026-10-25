@@ -30,7 +30,7 @@ interface CollateralVaultProps {
   renterName?: string;
   assetName?: string;
   onCollateralVerified: (collateral: BookingCollateral) => void;
-  onContractUploaded?: (doc: { fileName: string; fileSize: string; fileUrl: string; uploadedAt: string }) => void;
+  onContractUploaded?: (doc: { fileName: string; fileSize: string; fileUrl: string; fileType: 'pdf' | 'image'; uploadedAt: string }) => void;
 }
 
 export function CollateralAndGuarantorVault({
@@ -55,16 +55,18 @@ export function CollateralAndGuarantorVault({
   const [guarantorFaydaFin, setGuarantorFaydaFin] = useState("FIN-9482-1049-3321");
   const [guarantorEmployerTin, setGuarantorEmployerTin] = useState("0011882244");
   
-  // Interactive File Uploader State
+  // Interactive File Uploader State (PDF or Image)
   const [uploadedContract, setUploadedContract] = useState<{
     fileName: string;
     fileSize: string;
     fileUrl: string;
+    fileType: 'pdf' | 'image';
     uploadedAt: string;
   }>({
     fileName: "MIDROC_Notarized_Guarantee_Contract_2026.pdf",
     fileSize: "2.4 MB",
     fileUrl: "/contracts/guarantor-legal-affidavit.pdf",
+    fileType: "pdf",
     uploadedAt: "2026-10-24 10:15 AM",
   });
   const [isDragging, setIsDragging] = useState(false);
@@ -83,10 +85,13 @@ export function CollateralAndGuarantorVault({
       ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
       : `${Math.round(file.size / 1024)} KB`;
     const url = URL.createObjectURL(file);
+    const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+    const fileType: 'pdf' | 'image' = isImage ? 'image' : 'pdf';
     const info = {
       fileName: file.name,
       fileSize: sizeStr,
       fileUrl: url,
+      fileType,
       uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setUploadedContract(info);
@@ -138,6 +143,8 @@ export function CollateralAndGuarantorVault({
       collateralType: activeTab,
       contractFileName: uploadedContract.fileName,
       contractFileSize: uploadedContract.fileSize,
+      contractFileUrl: uploadedContract.fileUrl,
+      contractFileType: uploadedContract.fileType,
     });
     setNotifiedHeadDispatcher(true);
     setVerifying(false);
@@ -158,6 +165,8 @@ export function CollateralAndGuarantorVault({
       collateralType: activeTab,
       contractFileName: uploadedContract.fileName,
       contractFileSize: uploadedContract.fileSize,
+      contractFileUrl: uploadedContract.fileUrl,
+      contractFileType: uploadedContract.fileType,
     });
 
     setTimeout(() => {
@@ -175,6 +184,7 @@ export function CollateralAndGuarantorVault({
         contractDocumentUrl: uploadedContract.fileUrl,
         contractDocumentName: uploadedContract.fileName,
         contractDocumentSize: uploadedContract.fileSize,
+        contractDocumentType: uploadedContract.fileType,
         contractUploadedAt: uploadedContract.uploadedAt,
         isVerified: true,
         verifiedByUserId: currentUser?.id || "usr-002",
@@ -354,7 +364,7 @@ export function CollateralAndGuarantorVault({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-white text-xs">{uploadedContract.fileName}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-semibold flex items-center gap-1">
-                        <CheckCircle size={10} /> Validated PDF
+                        <CheckCircle size={10} /> Validated {uploadedContract.fileType === "image" ? "Image / Scan" : "PDF Document"}
                       </span>
                     </div>
                     <div className="text-[10px] text-neutral-400 mt-0.5 font-mono">
@@ -387,21 +397,21 @@ export function CollateralAndGuarantorVault({
 
               {/* Drag & Drop Hint */}
               <div className="mt-2 pt-2 border-t border-neutral-800/80 text-[10px] text-neutral-400 flex items-center justify-between">
-                <span>Drag and drop local device PDF / scanned affidavit here to update</span>
-                <span className="font-mono text-[#df2531]/80">Max 25 MB • PDF, PNG, JPG</span>
+                <span>Drag and drop local device PDF / scanned affidavit / contract image here</span>
+                <span className="font-mono text-[#df2531]/80">Max 25 MB • PDF, PNG, JPG, WEBP</span>
               </div>
             </div>
           </div>
 
-          {/* Scanned Guarantee Contract Preview Modal */}
+          {/* Scanned Guarantee Contract / Image Preview Modal */}
           {isPreviewOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-neutral-200 space-y-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-neutral-200 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
                   <div className="flex items-center gap-2">
                     <FileText className="text-[#df2531]" size={18} />
                     <h3 className="font-bold text-white text-sm font-display">
-                      Official Scanned Notarized Guarantee Document
+                      {uploadedContract.fileType === "image" ? "Scanned Collateral Image / Photo" : "Official Scanned Notarized Guarantee Document"}
                     </h3>
                   </div>
                   <button
@@ -412,68 +422,103 @@ export function CollateralAndGuarantorVault({
                   </button>
                 </div>
 
-                {/* Document Scanned Mock View */}
-                <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
-                  {/* Federal Seal Watermark */}
-                  <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
-                    ★ NOTARIZED & STAMPED ★
+                {/* If Image: Render high-resolution preview */}
+                {uploadedContract.fileType === "image" ? (
+                  <div className="space-y-4">
+                    <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[300px] overflow-hidden">
+                      <img
+                        src={uploadedContract.fileUrl}
+                        alt={uploadedContract.fileName}
+                        className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60"
+                      />
+                    </div>
+                    <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                      <div>
+                        <div className="text-white font-bold">{uploadedContract.fileName}</div>
+                        <div className="text-[11px] text-neutral-400">{uploadedContract.fileSize} • Uploaded {uploadedContract.uploadedAt}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold uppercase">
+                          Verified Image
+                        </span>
+                        {uploadedContract.fileUrl && (
+                          <a
+                            href={uploadedContract.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={uploadedContract.fileName}
+                            className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] flex items-center gap-1 font-sans"
+                          >
+                            <ExternalLink size={12} /> Open Full
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  /* If PDF: Document Scanned Mock View */
+                  <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
+                    {/* Federal Seal Watermark */}
+                    <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
+                      ★ NOTARIZED & STAMPED ★
+                    </div>
 
-                  <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
-                    <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
-                      FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                    <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
+                      <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
+                        FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                      </div>
+                      <div className="text-[11px] text-[#df2531] font-bold font-display">
+                        DOCUMENTS REGISTRATION & NOTARIAL SERVICE
+                      </div>
+                      <div className="text-[10px] text-neutral-400">
+                        Case File No: ET-NOTARY-2026-B8841029 • Woreda 03 Registry
+                      </div>
                     </div>
-                    <div className="text-[11px] text-[#df2531] font-bold font-display">
-                      DOCUMENTS REGISTRATION & NOTARIAL SERVICE
-                    </div>
-                    <div className="text-[10px] text-neutral-400">
-                      Case File No: ET-NOTARY-2026-B8841029 • Woreda 03 Registry
-                    </div>
-                  </div>
 
-                  <div className="space-y-2 text-[11px] text-neutral-300">
-                    <div>
-                      <span className="text-neutral-400">Document Title: </span>
-                      <strong>IRREVOCABLE COMMERCIAL SURETYSHIP & GUARANTEE AGREEMENT</strong>
+                    <div className="space-y-2 text-[11px] text-neutral-300">
+                      <div>
+                        <span className="text-neutral-400">Document Title: </span>
+                        <strong>IRREVOCABLE COMMERCIAL SURETYSHIP & GUARANTEE AGREEMENT</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Governing Law: </span>
+                        Ethiopian Civil Code Articles 1920–1951 (Suretyship)
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Guaranteed Principal: </span>
+                        <strong className="text-white">{renterName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Legal Guarantor: </span>
+                        <strong className="text-white">{guarantorFullName}</strong> (Phone: {guarantorPhone})
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">VeriFayda Digital FIN: </span>
+                        <span className="text-emerald-400 font-bold">{guarantorFaydaFin}</span>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Leased Equipment: </span>
+                        <strong className="text-white">{assetName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Security Guarantee Amount: </span>
+                        <strong className="text-[#df2531] font-display">{formatETB(amount)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Attached File: </span>
+                        <span className="text-neutral-300">{uploadedContract.fileName} ({uploadedContract.fileSize})</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-neutral-400">Governing Law: </span>
-                      Ethiopian Civil Code Articles 1920–1951 (Suretyship)
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Guaranteed Principal: </span>
-                      <strong className="text-white">{renterName}</strong>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Legal Guarantor: </span>
-                      <strong className="text-white">{guarantorFullName}</strong> (Phone: {guarantorPhone})
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">VeriFayda Digital FIN: </span>
-                      <span className="text-emerald-400 font-bold">{guarantorFaydaFin}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Leased Equipment: </span>
-                      <strong className="text-white">{assetName}</strong>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Security Guarantee Amount: </span>
-                      <strong className="text-[#df2531] font-display">{formatETB(amount)}</strong>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Attached File: </span>
-                      <span className="text-neutral-300">{uploadedContract.fileName} ({uploadedContract.fileSize})</span>
-                    </div>
-                  </div>
 
-                  <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
-                    <div className="flex items-center gap-1 text-emerald-400">
-                      <ShieldCheck size={14} />
-                      <span>Court Registrar Digital Signature Verified</span>
+                    <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
+                      <div className="flex items-center gap-1 text-emerald-400">
+                        <ShieldCheck size={14} />
+                        <span>Court Registrar Digital Signature Verified</span>
+                      </div>
+                      <span>Timestamp: {uploadedContract.uploadedAt}</span>
                     </div>
-                    <span>Timestamp: {uploadedContract.uploadedAt}</span>
                   </div>
-                </div>
+                )}
 
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button

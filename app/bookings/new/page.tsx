@@ -100,16 +100,18 @@ export default function NewBookingWizardPage() {
   const [renterFaydaFin, setRenterFaydaFin] = useState("FIN-8899-0011-2233");
   const [verifiedCollateral, setVerifiedCollateral] = useState<BookingCollateral | null>(null);
 
-  // KYC Notarized Guarantee Contract Document State
+  // KYC Notarized Guarantee Contract Document State (PDF or Image)
   const [uploadedGuaranteeDoc, setUploadedGuaranteeDoc] = useState<{
     fileName: string;
     fileSize: string;
     fileUrl: string;
+    fileType: 'pdf' | 'image';
     uploadedAt: string;
   }>({
     fileName: "MIDROC_Notarized_Guarantee_Contract_2026.pdf",
     fileSize: "2.4 MB",
     fileUrl: "/contracts/guarantor-legal-affidavit.pdf",
+    fileType: "pdf",
     uploadedAt: "2026-10-24 10:15 AM",
   });
   const [dispatchAlertToast, setDispatchAlertToast] = useState<{
@@ -314,6 +316,10 @@ export default function NewBookingWizardPage() {
           destinationDistanceKm: isOutOfCity ? destinationOneWayKm : 0,
           roundTripDistanceKm: isOutOfCity ? agreedDealKm : 0,
           agreedDealKm: isOutOfCity ? agreedDealKm : (rentalDays * 200),
+          contractDocumentUrl: uploadedGuaranteeDoc.fileUrl,
+          contractDocumentName: uploadedGuaranteeDoc.fileName,
+          contractDocumentSize: uploadedGuaranteeDoc.fileSize,
+          contractDocumentType: uploadedGuaranteeDoc.fileType,
           items: itemsPayload,
         }),
       });
@@ -344,6 +350,7 @@ export default function NewBookingWizardPage() {
         contractDocumentUrl: uploadedGuaranteeDoc.fileUrl,
         contractDocumentName: uploadedGuaranteeDoc.fileName,
         contractDocumentSize: uploadedGuaranteeDoc.fileSize,
+        contractDocumentType: uploadedGuaranteeDoc.fileType,
         contractUploadedAt: uploadedGuaranteeDoc.uploadedAt,
         isVerified: true,
         verifiedByUserId: currentUser?.id || "usr-002",
@@ -360,6 +367,7 @@ export default function NewBookingWizardPage() {
             contractDocumentUrl: uploadedGuaranteeDoc.fileUrl,
             contractDocumentName: uploadedGuaranteeDoc.fileName,
             contractDocumentSize: uploadedGuaranteeDoc.fileSize,
+            contractDocumentType: uploadedGuaranteeDoc.fileType,
             contractUploadedAt: uploadedGuaranteeDoc.uploadedAt,
           }),
         });
@@ -377,6 +385,8 @@ export default function NewBookingWizardPage() {
         collateralType: collateralPayload.collateralType,
         contractFileName: uploadedGuaranteeDoc.fileName,
         contractFileSize: uploadedGuaranteeDoc.fileSize,
+        contractFileUrl: uploadedGuaranteeDoc.fileUrl,
+        contractFileType: uploadedGuaranteeDoc.fileType,
       });
 
       setDispatchAlertToast({
@@ -1163,6 +1173,7 @@ export default function NewBookingWizardPage() {
                   fileName: col.contractDocumentName,
                   fileSize: col.contractDocumentSize || "2.4 MB",
                   fileUrl: col.contractDocumentUrl || "/contracts/guarantor-legal-affidavit.pdf",
+                  fileType: col.contractDocumentType || "pdf",
                   uploadedAt: col.contractUploadedAt || new Date().toLocaleTimeString(),
                 });
               }

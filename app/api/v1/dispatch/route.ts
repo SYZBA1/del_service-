@@ -11,13 +11,15 @@ export async function GET(req: NextRequest) {
     const bookingItems = db.bookingItems.map((item) => {
       const asset = db.getAssetById(item.assetId);
       const booking = db.bookings.find((b) => b.id === item.bookingId);
+      const collateral = db.collaterals.find((c) => c.bookingId === item.bookingId);
       const operator = item.assignedOperatorId
         ? db.operators.find((o) => o.id === item.assignedOperatorId) || db.users.find((u) => u.id === item.assignedOperatorId)
         : null;
       return {
         ...item,
         asset,
-        booking,
+        booking: booking ? { ...booking, collateral } : null,
+        collateral,
         operator,
       };
     });

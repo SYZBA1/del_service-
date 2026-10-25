@@ -14,11 +14,14 @@ import {
   Globe2,
   Lock,
   Layers,
+  Printer,
 } from "lucide-react";
+import { PaymentReportModal } from "@/components/PaymentReportModal";
 
 export default function DalolPaymentModulePage() {
   const [emailOrPhone, setEmailOrPhone] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const handleNotifySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,9 +122,30 @@ export default function DalolPaymentModulePage() {
                 </button>
               </form>
             )}
+
+            {/* Print / Export Report Preview for Dalol Admin */}
+            <div className="pt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setIsReportOpen(true)}
+                className="px-4 py-2 rounded-xl bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 border border-purple-500/40 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer font-display"
+              >
+                <Printer size={14} className="text-purple-300" />
+                <span>Print / Export Dalol Payment Report</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Dalol Payment Report Modal */}
+      <PaymentReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        role="dalol"
+        initialPeriod="monthly"
+        invoices={[]}
+      />
     </div>
   );
 }

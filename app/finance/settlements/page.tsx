@@ -14,10 +14,13 @@ import {
   FileCheck,
   ChevronRight,
   RotateCcw,
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
 import { Invoice, OwnerSettlementLedger } from "@/lib/types";
 import { formatETB, cn } from "@/lib/utils";
+import { PaymentReportModal } from "@/components/PaymentReportModal";
 
 export default function FinanceSettlementsPage() {
   const { activeTenantId, activePhase } = useTenant();
@@ -25,6 +28,7 @@ export default function FinanceSettlementsPage() {
   const [settlements, setSettlements] = useState<OwnerSettlementLedger[]>([]);
   const [loading, setLoading] = useState(true);
   const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
 
   async function loadData() {
@@ -90,13 +94,24 @@ export default function FinanceSettlementsPage() {
           </p>
         </div>
 
-        <button
-          onClick={loadData}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold hover:border-[#df2531]/40 transition-colors"
-        >
-          <RotateCcw size={14} />
-          Refresh Ledgers
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsReportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/30 transition-all font-display cursor-pointer"
+          >
+            <Printer size={15} />
+            <span>Super Admin Consolidated Report (Excel / PDF)</span>
+          </button>
+
+          <button
+            onClick={loadData}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold hover:border-[#df2531]/40 transition-colors cursor-pointer"
+          >
+            <RotateCcw size={14} />
+            Refresh Ledgers
+          </button>
+        </div>
       </div>
 
       {/* Tax & Financial Summary Cards */}
@@ -265,6 +280,16 @@ export default function FinanceSettlementsPage() {
           </table>
         </div>
       </div>
+
+      {/* Super Admin Consolidated All-In-One Payment Report Modal */}
+      <PaymentReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        role="super_admin"
+        initialPeriod="monthly"
+        invoices={invoices}
+        settlements={settlements}
+      />
     </div>
   );
 }

@@ -16,6 +16,15 @@ import {
   Check,
   Plus,
   ShieldAlert,
+  FileText,
+  Eye,
+  ExternalLink,
+  Image as ImageIcon,
+  CheckCircle2,
+  ShieldCheck,
+  X,
+  Search,
+  Download,
 } from "lucide-react";
 import { cn, formatETB } from "@/lib/utils";
 import { Asset, User, BookingItem, BookingStatus } from "@/lib/types";
@@ -34,6 +43,9 @@ export function HybridDispatchGantt() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "machinery" | "cars" | "operators">("all");
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+  const [selectedDispatchDoc, setSelectedDispatchDoc] = useState<any | null>(null);
+  const [manifestSearch, setManifestSearch] = useState<string>("");
+  const [manifestFilter, setManifestFilter] = useState<string>("all");
 
   // Time Window: 10 days starting from 2026-10-20
   const baseStartDate = new Date("2026-10-20T00:00:00Z");
@@ -82,6 +94,66 @@ export function HybridDispatchGantt() {
   const certifiedOperators = selectedAsset?.category === "heavy_machinery"
     ? operators.filter((op) => op.driverLicenseGrade === "Special Mobile Machinery" || (op.driverLicenseGrade && op.driverLicenseGrade.toLowerCase().includes("machinery")))
     : operators;
+
+  // Map and enrich each dispatch item with its corresponding historical contract/photo attachment
+  const enrichedDispatches = bookingItems.map((item) => {
+    const col = item.collateral;
+    const docName = col?.contractDocumentName || item.booking?.contractDocumentName || (
+      item.bookingId === 'bkg-101' ? 'Scanned-Franco Valuta.pdf' :
+      item.bookingId === 'bkg-102' ? 'Corporate_PO_Stamp.png' :
+      item.bookingId === 'bkg-103' ? 'Irrevocable_Guarantor_Affidavit.pdf' :
+      item.bookingId === 'bkg-104' ? 'Bank_CPO_Awash_Signed.png' :
+      item.bookingId === 'bkg-105' ? 'Avanza_SelfDrive_Agreement.pdf' :
+      item.bookingId === 'bkg-106' ? 'Sur_Shantui_Lease_Deed.pdf' :
+      item.bookingId === 'bkg-107' ? 'Loader_Inspection_Collateral.jpg' :
+      item.bookingId === 'bkg-108' ? 'ERA_Heavy_Grader_Surety.pdf' :
+      item.bookingId === 'bkg-109' ? 'Innova_Host_Security_Check.png' :
+      'Notarized_Dispatch_Agreement.pdf'
+    );
+    const docSize = col?.contractDocumentSize || item.booking?.contractDocumentSize || (
+      item.bookingId === 'bkg-101' ? '449 KB' :
+      item.bookingId === 'bkg-102' ? '820 KB' :
+      item.bookingId === 'bkg-103' ? '1.2 MB' :
+      item.bookingId === 'bkg-104' ? '612 KB' :
+      item.bookingId === 'bkg-105' ? '980 KB' :
+      item.bookingId === 'bkg-106' ? '2.8 MB' :
+      item.bookingId === 'bkg-107' ? '1.4 MB' :
+      item.bookingId === 'bkg-108' ? '3.1 MB' :
+      item.bookingId === 'bkg-109' ? '734 KB' :
+      '1.8 MB'
+    );
+    const docType: 'pdf' | 'image' = col?.contractDocumentType || item.booking?.contractDocumentType || (
+      /\.(png|jpe?g|webp)$/i.test(docName) ? 'image' : 'pdf'
+    );
+    const docUrl = col?.contractDocumentUrl || item.booking?.contractDocumentUrl || (
+      docType === 'image'
+        ? 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80'
+        : '/contracts/Scanned-Franco-Valuta.pdf'
+    );
+
+    return {
+      ...item,
+      attachment: {
+        name: docName,
+        size: docSize,
+        type: docType,
+        url: docUrl,
+      },
+    };
+  });
+
+  const filteredDispatches = enrichedDispatches.filter((disp) => {
+    if (manifestFilter !== "all" && disp.itemStatus !== manifestFilter) return false;
+    if (manifestSearch.trim()) {
+      const q = manifestSearch.toLowerCase();
+      const bRef = (disp.booking?.bookingReference || "").toLowerCase();
+      const renter = (disp.booking?.renterName || "").toLowerCase();
+      const asset = `${disp.asset?.make || ""} ${disp.asset?.model || ""}`.toLowerCase();
+      const doc = disp.attachment.name.toLowerCase();
+      return bRef.includes(q) || renter.includes(q) || asset.includes(q) || doc.includes(q);
+    }
+    return true;
+  });
 
   // Helper to check if item is scheduled on a day
   const getAssetStatusOnDay = (assetId: string, date: Date) => {
@@ -458,6 +530,305 @@ export function HybridDispatchGantt() {
           </div>
         )}
       </div>
+
+      {/* SECTION 2: DISPATCH MANIFEST & HISTORICAL CONTRACT ATTACHMENTS (PDF / IMAGE) */}
+      <div className="rounded-2xl border border-[#262626] bg-[#0A0A0A] p-5 space-y-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-neutral-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <FileText className="text-[#df2531]" size={18} />
+              <h2 className="text-base font-bold text-white font-display">
+                Dispatch Manifest & Historical Document Archive
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#df2531]/15 text-[#df2531] border border-[#df2531]/30 font-mono font-bold">
+                {enrichedDispatches.length} Total Records
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              Every dispatched asset is archived alongside its notarized surety contract (PDF) or verified inspection snapshot (Image).
+            </p>
+          </div>
+
+          {/* Search & Filter */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500" size={13} />
+              <input
+                type="text"
+                value={manifestSearch}
+                onChange={(e) => setManifestSearch(e.target.value)}
+                placeholder="Search booking ref, client, or equipment..."
+                className="bg-neutral-900 border border-neutral-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] w-48 sm:w-64"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-black p-1 rounded-xl border border-neutral-800">
+              {["all", "active", "confirmed"].map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setManifestFilter(tab)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer font-display",
+                    manifestFilter === tab
+                      ? "bg-[#df2531] text-white"
+                      : "text-neutral-400 hover:text-white"
+                  )}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Dispatches Table with Document Attachment Beside Each Row */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-neutral-300">
+            <thead className="bg-black text-[10px] uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
+              <tr>
+                <th className="px-3.5 py-2.5 font-bold">Booking Reference</th>
+                <th className="px-3.5 py-2.5 font-bold">Dispatched Fleet Asset</th>
+                <th className="px-3.5 py-2.5 font-bold">Certified Operator</th>
+                <th className="px-3.5 py-2.5 font-bold">Rental Window & Site</th>
+                <th className="px-3.5 py-2.5 font-bold">Status</th>
+                <th className="px-3.5 py-2.5 font-bold text-right">Attached Document (PDF / Image)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-800/60 font-medium">
+              {filteredDispatches.map((disp, idx) => {
+                const isImage = disp.attachment.type === "image";
+                return (
+                  <tr key={disp.id || idx} className="hover:bg-neutral-900/60 transition-colors">
+                    {/* Booking Reference */}
+                    <td className="px-3.5 py-3">
+                      <div className="font-mono font-bold text-white text-xs">
+                        {disp.booking?.bookingReference || `DEL-BKG-2026-0${101 + idx}`}
+                      </div>
+                      <div className="text-[10px] text-neutral-400 font-sans">
+                        {disp.booking?.renterName || "MIDROC Construction Ethiopia"}
+                      </div>
+                    </td>
+
+                    {/* Dispatched Asset */}
+                    <td className="px-3.5 py-3">
+                      <div className="font-semibold text-white">
+                        {disp.asset?.make} {disp.asset?.model}
+                      </div>
+                      <div className="text-[10px] text-neutral-400 font-mono">
+                        {disp.asset?.plateNumber || disp.asset?.chassisOrSerialNumber} • {disp.asset?.category?.replace("_", " ")}
+                      </div>
+                    </td>
+
+                    {/* Operator */}
+                    <td className="px-3.5 py-3">
+                      {disp.operator ? (
+                        <div>
+                          <div className="font-semibold text-neutral-200">{disp.operator.fullName}</div>
+                          <div className="text-[10px] text-[#df2531] font-mono">
+                            {disp.operator.driverLicenseGrade || "Certified Operator"}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-neutral-400 italic">Self-Drive / Client Staff</span>
+                      )}
+                    </td>
+
+                    {/* Rental Window & Site */}
+                    <td className="px-3.5 py-3">
+                      <div className="text-neutral-200 font-mono text-[11px]">
+                        {new Date(disp.rentalPeriodStart).toLocaleDateString()} – {new Date(disp.rentalPeriodEnd).toLocaleDateString()}
+                      </div>
+                      <div className="text-[10px] text-neutral-400">
+                        {disp.booking?.destinationName || disp.booking?.projectSiteRegion || "Addis Ababa Central Corridor"}
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-3.5 py-3">
+                      <span
+                        className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono",
+                          disp.itemStatus === "active"
+                            ? "bg-[#df2531]/20 text-[#df2531] border border-[#df2531]/40"
+                            : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        )}
+                      >
+                        {disp.itemStatus}
+                      </span>
+                    </td>
+
+                    {/* Attachment PDF / Image Pill Beside Dispatch */}
+                    <td className="px-3.5 py-3 text-right">
+                      <div className="inline-flex items-center gap-1.5 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDispatchDoc(disp)}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-lg border text-[11px] font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]",
+                            isImage
+                              ? "bg-amber-950/30 hover:bg-amber-900/40 border-amber-500/40 text-amber-300"
+                              : "bg-emerald-950/30 hover:bg-emerald-900/40 border-emerald-500/40 text-emerald-300"
+                          )}
+                          title="Click to view attached contract / inspection record"
+                        >
+                          {isImage ? (
+                            <ImageIcon size={13} className="text-amber-400 shrink-0" />
+                          ) : (
+                            <FileText size={13} className="text-emerald-400 shrink-0" />
+                          )}
+                          <span className="font-bold truncate max-w-[170px]">{disp.attachment.name}</span>
+                          <span className="text-[9px] text-neutral-400">({disp.attachment.size})</span>
+                          <span
+                            className={cn(
+                              "text-[8px] px-1 py-0.2 rounded font-black uppercase tracking-wider ml-1",
+                              isImage ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
+                            )}
+                          >
+                            {isImage ? "IMG" : "PDF"}
+                          </span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Interactive Modal for Dispatch Attachment PDF / Image */}
+      {selectedDispatchDoc && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn text-neutral-200">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+              <div className="flex items-center gap-2">
+                {selectedDispatchDoc.attachment.type === "image" ? (
+                  <ImageIcon className="text-[#df2531]" size={20} />
+                ) : (
+                  <FileText className="text-[#df2531]" size={20} />
+                )}
+                <div>
+                  <h3 className="font-bold text-white text-sm font-display">
+                    {selectedDispatchDoc.attachment.name}
+                  </h3>
+                  <p className="text-[10px] text-neutral-400">
+                    Dispatch Historical Document • {selectedDispatchDoc.booking?.bookingReference || "DEL-BKG-2026"} • {selectedDispatchDoc.attachment.size}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDispatchDoc(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            {selectedDispatchDoc.attachment.type === "image" ? (
+              <div className="space-y-4">
+                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[300px] overflow-hidden">
+                  <img
+                    src={selectedDispatchDoc.attachment.url}
+                    alt={selectedDispatchDoc.attachment.name}
+                    className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60"
+                  />
+                </div>
+                <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                  <div>
+                    <div className="text-white font-bold">{selectedDispatchDoc.attachment.name}</div>
+                    <div className="text-[11px] text-neutral-400">
+                      Dispatched Asset: {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model} ({selectedDispatchDoc.asset?.plateNumber || "SP-Series"})
+                    </div>
+                  </div>
+                  {selectedDispatchDoc.attachment.url && (
+                    <a
+                      href={selectedDispatchDoc.attachment.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs flex items-center gap-1.5 font-sans"
+                    >
+                      <ExternalLink size={13} /> Open Full
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
+                <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
+                  ★ NOTARIZED & STAMPED ★
+                </div>
+
+                <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
+                  <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
+                    FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                  </div>
+                  <div className="text-[11px] text-[#df2531] font-bold font-display">
+                    DOCUMENTS REGISTRATION & NOTARIAL SERVICE
+                  </div>
+                  <div className="text-[10px] text-neutral-400">
+                    Official Dispatch Manifest Contract Archive • Case Ref: ET-NOTARY-2026-B8841029
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-[11px] text-neutral-300">
+                  <div>
+                    <span className="text-neutral-400">Contract Title: </span>
+                    <strong>COMMERCIAL EQUIPMENT LEASE & SURETY AGREEMENT</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Renter / Lessee: </span>
+                    <strong className="text-white">{selectedDispatchDoc.booking?.renterName || "MIDROC Construction Ethiopia"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Dispatched Asset: </span>
+                    <strong className="text-white">
+                      {selectedDispatchDoc.asset?.make} {selectedDispatchDoc.asset?.model} ({selectedDispatchDoc.asset?.plateNumber || selectedDispatchDoc.asset?.chassisOrSerialNumber})
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Assigned Operator: </span>
+                    <strong className="text-white">{selectedDispatchDoc.operator?.fullName || "Client Certified Driver"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Rental Period: </span>
+                    <span className="text-emerald-400">
+                      {new Date(selectedDispatchDoc.rentalPeriodStart).toLocaleDateString()} to {new Date(selectedDispatchDoc.rentalPeriodEnd).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Archive File: </span>
+                    <span className="text-white font-bold">{selectedDispatchDoc.attachment.name} ({selectedDispatchDoc.attachment.size})</span>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
+                  <div className="flex items-center gap-1 text-emerald-400">
+                    <ShieldCheck size={14} />
+                    <span>Federal Notary Seal Digitally Anchored</span>
+                  </div>
+                  <span>Verified: {new Date(selectedDispatchDoc.rentalPeriodStart).toLocaleDateString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDispatchDoc(null)}
+                className="px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs transition-colors font-display cursor-pointer"
+              >
+                Close Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

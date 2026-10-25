@@ -37,6 +37,8 @@ interface TenantContextType {
     collateralType?: string;
     contractFileName?: string;
     contractFileSize?: string;
+    contractFileUrl?: string;
+    contractFileType?: 'pdf' | 'image';
   }) => Promise<SystemNotification | null>;
   approveNotification: (id: string) => Promise<boolean>;
   markNotificationRead: (id: string) => Promise<boolean>;

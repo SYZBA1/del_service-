@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
       destinationDistanceKm,
       roundTripDistanceKm,
       agreedDealKm,
+      contractDocumentUrl,
+      contractDocumentName,
+      contractDocumentSize,
+      contractDocumentType,
       items = [], // array of { assetId, assignedOperatorId, rentalPeriodStart, rentalPeriodEnd, mobilizationFeeCharged, meterStart, meterEnd, actualUsedUnits, agreedDealUnits, overageUnits, overageSurcharge }
     } = body;
 
@@ -80,6 +84,10 @@ export async function POST(req: NextRequest) {
         destinationDistanceKm,
         roundTripDistanceKm,
         agreedDealKm,
+        contractDocumentUrl,
+        contractDocumentName,
+        contractDocumentSize,
+        contractDocumentType,
         items,
       });
 

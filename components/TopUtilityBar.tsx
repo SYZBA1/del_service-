@@ -28,6 +28,9 @@ import {
   Settings,
   Trash2,
   CheckCheck,
+  Eye,
+  ExternalLink,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
 import { cn } from "@/lib/utils";
@@ -61,6 +64,7 @@ export function TopUtilityBar() {
   const [notificationTab, setNotificationTab] = useState<"pending" | "all">("pending");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [viewingAttachment, setViewingAttachment] = useState<any | null>(null);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const settingsContainerRef = useRef<HTMLDivElement>(null);
@@ -576,12 +580,27 @@ export function TopUtilityBar() {
                           {notif.message}
                         </p>
 
-                        {/* Scanned Guarantee Contract Attachment Badge */}
+                        {/* Scanned Guarantee Contract Attachment Badge with Interactive Preview */}
                         {notif.contractFileName && (
-                          <div className="px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center justify-between font-mono">
-                            <span className="truncate pr-1">📄 {notif.contractFileName} {notif.contractFileSize ? `(${notif.contractFileSize})` : ""}</span>
-                            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase">
-                              Ready for Review
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingAttachment(notif);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center justify-between font-mono cursor-pointer transition-all hover:scale-[1.01] group/att"
+                            title="Click to view attached contract / document preview"
+                          >
+                            <span className="truncate pr-1 flex items-center gap-1.5">
+                              {notif.contractFileType === "image" || /\.(png|jpe?g|webp)$/i.test(notif.contractFileName) ? (
+                                <ImageIcon size={13} className="text-emerald-400 shrink-0" />
+                              ) : (
+                                <FileText size={13} className="text-emerald-400 shrink-0" />
+                              )}
+                              <strong className="text-emerald-200 group-hover/att:underline">{notif.contractFileName}</strong>
+                              {notif.contractFileSize ? <span className="text-neutral-400 text-[10px]">({notif.contractFileSize})</span> : null}
+                            </span>
+                            <span className="shrink-0 text-[9px] px-2 py-0.5 rounded bg-emerald-500/20 group-hover/att:bg-emerald-500/30 text-emerald-400 font-bold uppercase flex items-center gap-1">
+                              <Eye size={10} /> View Doc
                             </span>
                           </div>
                         )}
@@ -598,7 +617,7 @@ export function TopUtilityBar() {
                               onClick={async () => {
                                 await approveNotification(notif.id);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#df2531]/80 text-white font-black text-xs flex items-center gap-1.5 shadow shadow-[#df2531]/30 active:scale-95"
+                              className="px-3 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#df2531]/80 text-white font-black text-xs flex items-center gap-1.5 shadow shadow-[#df2531]/30 active:scale-95 cursor-pointer font-display"
                             >
                               <Check size={13} />
                               Approve & Sign KYC
@@ -645,6 +664,140 @@ export function TopUtilityBar() {
           </div>
         </div>
       </div>
+
+      {/* Interactive Document / Contract Attachment Preview Modal */}
+      {viewingAttachment && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn text-neutral-200">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+              <div className="flex items-center gap-2">
+                {viewingAttachment.contractFileType === "image" || /\.(png|jpe?g|webp)$/i.test(viewingAttachment.contractFileName) ? (
+                  <ImageIcon className="text-[#df2531]" size={20} />
+                ) : (
+                  <FileText className="text-[#df2531]" size={20} />
+                )}
+                <div>
+                  <h3 className="font-bold text-white text-sm font-display">
+                    {viewingAttachment.contractFileName}
+                  </h3>
+                  <p className="text-[10px] text-neutral-400">
+                    Attached Document Archive • {viewingAttachment.contractFileSize || "Verified File"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingAttachment(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body: Image Preview or PDF Mock Preview */}
+            {viewingAttachment.contractFileType === "image" || /\.(png|jpe?g|webp)$/i.test(viewingAttachment.contractFileName) ? (
+              <div className="space-y-4">
+                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[300px] overflow-hidden">
+                  <img
+                    src={viewingAttachment.contractFileUrl || "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80"}
+                    alt={viewingAttachment.contractFileName}
+                    className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60"
+                  />
+                </div>
+                <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                  <div>
+                    <div className="text-white font-bold">{viewingAttachment.contractFileName}</div>
+                    <div className="text-[11px] text-neutral-400">Certified Digital Snapshot / Inspection Stamp</div>
+                  </div>
+                  {viewingAttachment.contractFileUrl && (
+                    <a
+                      href={viewingAttachment.contractFileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs flex items-center gap-1.5 font-sans"
+                    >
+                      <ExternalLink size={13} /> Open Full Image
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 rounded-xl bg-neutral-900 border border-neutral-800 space-y-4 text-xs font-mono relative overflow-hidden">
+                {/* Federal Seal Watermark */}
+                <div className="absolute right-4 top-4 border-2 border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider transform rotate-12">
+                  ★ NOTARIZED & STAMPED ★
+                </div>
+
+                <div className="text-center space-y-1 pb-3 border-b border-neutral-800">
+                  <div className="font-bold text-neutral-300 text-xs uppercase tracking-wider">
+                    FEDERAL DEMOCRATIC REPUBLIC OF ETHIOPIA
+                  </div>
+                  <div className="text-[11px] text-[#df2531] font-bold font-display">
+                    DOCUMENTS REGISTRATION & NOTARIAL SERVICE
+                  </div>
+                  <div className="text-[10px] text-neutral-400">
+                    Case File No: ET-NOTARY-2026-B8841029 • Woreda 03 Registry
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-[11px] text-neutral-300">
+                  <div>
+                    <span className="text-neutral-400">Document Title: </span>
+                    <strong>OFFICIAL COMMERCIAL LEASE &amp; SURETYSHIP CONTRACT</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Registered Client / Principal: </span>
+                    <strong className="text-white">{viewingAttachment.renterName || "MIDROC Construction Ethiopia"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Leased Fleet Asset: </span>
+                    <strong className="text-white">{viewingAttachment.assetName || "Heavy Machinery Plant"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Collateral Type: </span>
+                    <span className="text-emerald-400 font-bold uppercase">{viewingAttachment.collateralType || "Personal Guarantor Was"}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400">Attached Archive: </span>
+                    <span className="text-white">{viewingAttachment.contractFileName} ({viewingAttachment.contractFileSize || "449 KB"})</span>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-[10px] text-neutral-400">
+                  <div className="flex items-center gap-1 text-emerald-400">
+                    <CheckCircle2 size={14} />
+                    <span>Court Registrar Digital Stamp Verified</span>
+                  </div>
+                  <span>Timestamp: {new Date(viewingAttachment.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-2">
+              <div>
+                {viewingAttachment.status === "pending" && viewingAttachment.type === "kyc_validation" && (
+                  <button
+                    onClick={async () => {
+                      await approveNotification(viewingAttachment.id);
+                      setViewingAttachment(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-display cursor-pointer"
+                  >
+                    <Check size={14} /> Approve & Sign KYC
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setViewingAttachment(null)}
+                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs transition-colors font-display cursor-pointer"
+              >
+                Close Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
