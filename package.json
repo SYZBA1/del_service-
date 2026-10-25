@@ -18,10 +18,13 @@
     "firebase-admin": "^14.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
-    "next": "^15.1.7",
+    "next": "^15.1.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0"
+  },
+  "overrides": {
+    "glob": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
