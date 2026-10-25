@@ -1,0 +1,380 @@
+@import "leaflet/dist/leaflet.css";
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&family=Oswald:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 356 75% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 7%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 356 75% 51%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 356 75% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 356 75% 51%;
+    --radius: 0.5rem;
+    --font-display: 'Oswald', 'Bebas Neue', sans-serif;
+    --font-sans: 'Inter', 'Roboto', sans-serif;
+  }
+
+  html.light {
+    --background: 216 15% 95%;
+    --foreground: 220 20% 10%;
+    --card: 218 10% 25%;
+    --card-foreground: 0 0% 100%;
+    --popover: 218 10% 25%;
+    --popover-foreground: 0 0% 100%;
+    --border: 218 11% 20%;
+    --input: 0 0% 100%;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  overflow-x: hidden;
+  font-family: var(--font-inter), 'Inter', 'Roboto', sans-serif;
+}
+
+.font-display, .font-mokoto {
+  font-family: var(--font-oswald), 'Oswald', 'Bebas Neue', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* Dark Mode: Pure Luxury Black with Ambient Crimson Radial Glow */
+html.dark body {
+  background-color: #000000;
+  background-image: radial-gradient(ellipse 85% 50% at 50% 100%, rgba(223, 37, 49, 0.25), transparent 70%);
+  background-attachment: fixed;
+  color: #FFFFFF;
+}
+
+/* ========================================================
+   LIGHT THEME OVERHAUL: METALLIC DARK SILVER PALETTE (#2D323B)
+   ======================================================== */
+html.light body {
+  background-color: #ECEEF2 !important;
+  color: #111827 !important;
+}
+
+/* Main canvas background in Light Theme */
+html.light .bg-\[\#000000\],
+html.light .bg-black {
+  background-color: #ECEEF2 !important;
+}
+
+/* Light Backgrounds (Page Canvas, Top Header & Sidebar):
+   Never use white text on light gray or white backgrounds. */
+html.light header {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #111827 !important;
+}
+
+html.light header .font-display,
+html.light header .text-white,
+html.light header [class*="text-neutral-900"] {
+  color: #111827 !important;
+}
+
+html.light aside,
+html.light .app-sidebar {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #111827 !important;
+}
+
+/* "DEL SERVICES" header logo text in sidebar: Deep Charcoal (#111827) */
+html.light .app-sidebar .font-display,
+html.light aside .font-display {
+  color: #111827 !important;
+}
+
+/* Darken all sidebar menu links to Slate Charcoal (#374151) */
+html.light aside a:not([class*="bg-\[\#df2531\]"]),
+html.light .app-sidebar a:not([class*="bg-\[\#df2531\]"]) {
+  color: #374151 !important;
+  font-weight: 600 !important;
+}
+
+html.light aside a:not([class*="bg-\[\#df2531\]"]) svg,
+html.light .app-sidebar a:not([class*="bg-\[\#df2531\]"]) svg {
+  color: #4B5563 !important;
+}
+
+html.light aside a:not([class*="bg-\[\#df2531\]"]):hover,
+html.light .app-sidebar a:not([class*="bg-\[\#df2531\]"]):hover {
+  color: #111827 !important;
+  background-color: #F1F5F9 !important;
+}
+
+/* Sidebar category headers */
+html.light aside .text-neutral-500,
+html.light .app-sidebar .text-neutral-500 {
+  color: #4B5563 !important;
+  font-weight: 700 !important;
+}
+
+/* Main page titles on canvas: Deep Charcoal (#111827) or Crimson Red (#df2531) */
+html.light h1:not(.card-dark-silver *):not(.card-obsidian *):not(.bg-\[\#2D323B\] *):not(.bg-\[\#0a0a0a\] *):not(.bg-\[\#0d0d0d\] *):not(.bg-neutral-950 *),
+html.light .page-title {
+  color: #111827 !important;
+}
+
+/* Darken page subtitles to Slate Charcoal (#374151) */
+html.light p.text-neutral-400,
+html.light p.text-neutral-500,
+html.light p.text-neutral-600,
+html.light .page-subtitle {
+  color: #374151 !important;
+}
+
+/* ========================================================
+   Dark Silver Cards (#2D323B) inside Light Theme
+   ======================================================== */
+html.light .bg-\[\#0a0a0a\],
+html.light .bg-\[\#0A0A0A\],
+html.light .bg-\[\#0d0d0d\],
+html.light .bg-\[\#0D0D0D\],
+html.light .bg-\[\#080808\],
+html.light .bg-\[\#0C0C0C\],
+html.light .bg-\[\#121212\],
+html.light .bg-neutral-950,
+html.light .card-obsidian,
+html.light .card-dark-silver,
+html.light .bg-\[\#2D323B\] {
+  background-color: #2D323B !important;
+  border-color: #3E4551 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Secondary Elevated Dark Silver Containers & Sub-cards (#373D47) */
+html.light .bg-neutral-900,
+html.light .bg-neutral-900\/60,
+html.light .bg-neutral-900\/80,
+html.light .bg-neutral-900\/90,
+html.light .bg-neutral-950\/60,
+html.light .bg-neutral-950\/80,
+html.light .bg-neutral-950\/50 {
+  background-color: #373D47 !important;
+  border-color: #4A5260 !important;
+  color: #FFFFFF !important;
+}
+
+/* Inside Dark Silver Cards: Keep all main headings & big numbers Pure White (#FFFFFF) */
+html.light .bg-\[\#2D323B\] h1,
+html.light .bg-\[\#2D323B\] h2,
+html.light .bg-\[\#2D323B\] h3,
+html.light .bg-\[\#2D323B\] h4,
+html.light .bg-\[\#2D323B\] .text-white,
+html.light .bg-\[\#0a0a0a\] h1,
+html.light .bg-\[\#0a0a0a\] h2,
+html.light .bg-\[\#0a0a0a\] h3,
+html.light .bg-\[\#0a0a0a\] h4,
+html.light .bg-\[\#0a0a0a\] .text-white,
+html.light .bg-\[\#0d0d0d\] h1,
+html.light .bg-\[\#0d0d0d\] h2,
+html.light .bg-\[\#0d0d0d\] h3,
+html.light .bg-\[\#0d0d0d\] h4,
+html.light .bg-\[\#0d0d0d\] .text-white,
+html.light .bg-neutral-950 h1,
+html.light .bg-neutral-950 h2,
+html.light .bg-neutral-950 h3,
+html.light .bg-neutral-950 h4,
+html.light .bg-neutral-950 .text-white,
+html.light .bg-neutral-900 h1,
+html.light .bg-neutral-900 h2,
+html.light .bg-neutral-900 h3,
+html.light .bg-neutral-900 h4,
+html.light .bg-neutral-900 .text-white,
+html.light .card-dark-silver h1,
+html.light .card-dark-silver h2,
+html.light .card-dark-silver h3,
+html.light .card-dark-silver h4,
+html.light .card-dark-silver .text-white,
+html.light .card-obsidian h1,
+html.light .card-obsidian h2,
+html.light .card-obsidian h3,
+html.light .card-obsidian h4,
+html.light .card-obsidian .text-white {
+  color: #FFFFFF !important;
+}
+
+/* Brighten all secondary labels and muted descriptions to Light Silver (#E5E7EB) inside dark cards */
+html.light .bg-\[\#2D323B\] p,
+html.light .bg-\[\#2D323B\] span.text-neutral-400,
+html.light .bg-\[\#2D323B\] span.text-neutral-300,
+html.light .bg-\[\#2D323B\] div.text-neutral-400,
+html.light .bg-\[\#0a0a0a\] p,
+html.light .bg-\[\#0a0a0a\] span.text-neutral-400,
+html.light .bg-\[\#0a0a0a\] span.text-neutral-300,
+html.light .bg-\[\#0a0a0a\] div.text-neutral-400,
+html.light .bg-\[\#0d0d0d\] p,
+html.light .bg-\[\#0d0d0d\] span.text-neutral-400,
+html.light .bg-\[\#0d0d0d\] div.text-neutral-400,
+html.light .bg-neutral-950 p,
+html.light .bg-neutral-950 span.text-neutral-400,
+html.light .bg-neutral-950 div.text-neutral-400,
+html.light .bg-neutral-900 p,
+html.light .bg-neutral-900 span.text-neutral-400,
+html.light .bg-neutral-900 div.text-neutral-400,
+html.light .card-dark-silver p,
+html.light .card-dark-silver span.text-neutral-400,
+html.light .card-dark-silver div.text-neutral-400,
+html.light .card-obsidian p,
+html.light .card-obsidian span.text-neutral-400,
+html.light .card-obsidian div.text-neutral-400 {
+  color: #E5E7EB !important;
+}
+
+/* Brighten red badges & icons inside dark cards to vibrant Light Crimson (#FF4D58) with soft border */
+html.light .bg-\[\#2D323B\] .text-\[\#df2531\],
+html.light .bg-\[\#0a0a0a\] .text-\[\#df2531\],
+html.light .bg-\[\#0d0d0d\] .text-\[\#df2531\],
+html.light .bg-neutral-950 .text-\[\#df2531\],
+html.light .bg-neutral-900 .text-\[\#df2531\],
+html.light .card-dark-silver .text-\[\#df2531\],
+html.light .card-obsidian .text-\[\#df2531\] {
+  color: #FF4D58 !important;
+}
+
+html.light .bg-\[\#2D323B\] [class*="bg-\[\#df2531\]\/"],
+html.light .bg-\[\#0a0a0a\] [class*="bg-\[\#df2531\]\/"],
+html.light .bg-\[\#0d0d0d\] [class*="bg-\[\#df2531\]\/"],
+html.light .bg-neutral-950 [class*="bg-\[\#df2531\]\/"],
+html.light .bg-neutral-900 [class*="bg-\[\#df2531\]\/"],
+html.light .card-dark-silver [class*="bg-\[\#df2531\]\/"],
+html.light .card-obsidian [class*="bg-\[\#df2531\]\/"] {
+  background-color: rgba(255, 77, 88, 0.18) !important;
+  border: 1px solid rgba(255, 77, 88, 0.35) !important;
+  color: #FF4D58 !important;
+}
+
+/* Role Titles & Section Headings in Crisp White */
+html.light .role-title,
+html.light .section-heading {
+  color: #FFFFFF !important;
+}
+
+html.light .text-crimson-brand {
+  color: #df2531 !important;
+}
+
+/* Border Overrides for Dark Silver */
+html.light .border-neutral-800,
+html.light .border-neutral-700 {
+  border-color: #3E4551 !important;
+}
+
+/* High-Contrast Input Fields in Light Mode */
+html.light input[type="email"],
+html.light input[type="text"],
+html.light input[type="password"] {
+  background-color: #FFFFFF !important;
+  color: #111827 !important;
+  border-color: #D1D5DB !important;
+}
+
+html.light input[type="email"]::placeholder,
+html.light input[type="text"]::placeholder,
+html.light input[type="password"]::placeholder {
+  color: #6B7280 !important;
+}
+
+/* Custom delicate scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #ECEEF2;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #242424;
+  border-radius: 9999px;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border-radius: 9999px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #df2531;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
+
+/* Brand Button and Surface Utilities */
+.btn-crimson {
+  background-color: #df2531;
+  color: #ffffff;
+  transition: all 0.2s ease-in-out;
+}
+.btn-crimson:hover {
+  background-color: rgba(223, 37, 49, 0.85);
+  box-shadow: 0 0 20px rgba(223, 37, 49, 0.55);
+}
+
+.card-obsidian {
+  background-color: #0a0a0a;
+  border: 1px solid rgba(223, 37, 49, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
+}
+
+.card-dark-silver {
+  background-color: #0a0a0a;
+  border: 1px solid #2D3138;
+}
+
+.crimson-glow {
+  box-shadow: 0 0 25px rgba(223, 37, 49, 0.45);
+}
+
+/* Custom Leaflet Dark Theme Overrides */
+.leaflet-container {
+  background-color: #050505 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-content {
+  margin: 0 !important;
+  line-height: inherit !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-tip {
+  background: #0a0a0a !important;
+  border: 1px solid rgba(223, 37, 49, 0.4) !important;
+}

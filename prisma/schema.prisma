@@ -1,0 +1,320 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, btree_gist]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+enum UserRoleType {
+  super_admin
+  dispatcher
+  mechanic
+  fleet_owner
+  renter
+  operator
+}
+
+enum OwnerTierType {
+  internal_company
+  corporate_partner
+  individual_host
+}
+
+enum AssetCategoryType {
+  passenger_car
+  commercial_van
+  heavy_machinery
+  power_equipment
+  attachment
+}
+
+enum MeterUnitType {
+  odometer_km
+  engine_hours
+  calendar_days_only
+}
+
+enum AssetStatusType {
+  available
+  on_rent
+  in_transit
+  maintenance
+  pending_approval
+  retired
+}
+
+enum BookingStatusType {
+  draft
+  pending_host_approval
+  kyc_pending
+  confirmed
+  dispatched
+  active
+  completed
+  cancelled
+  disputed
+}
+
+enum CollateralType {
+  cash_cpo
+  bank_guarantee
+  post_dated_check
+  personal_guarantor_was
+  corporate_po
+  digital_wallet_hold
+}
+
+model User {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName            String       @map("full_name") @db.VarChar(150)
+  phoneNumber         String       @unique @map("phone_number") @db.VarChar(20)
+  email               String?      @unique @db.VarChar(150)
+  role                UserRoleType @default(renter)
+  faydaFinNumber      String?      @unique @map("fayda_fin_number") @db.VarChar(50)
+  tinNumber           String?      @map("tin_number") @db.VarChar(30)
+  driverLicenseGrade  String?      @map("driver_license_grade") @db.VarChar(30)
+  kycVerified         Boolean      @default(false) @map("kyc_verified")
+  kycDocuments        Json         @default("[]") @map("kyc_documents")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  fleetOwners         FleetOwner[]
+  bookings            Booking[]
+  assignedItems       BookingItem[] @relation("OperatorBookings")
+  inspections         AssetInspection[]
+  maintenanceTasks    MaintenanceSchedule[]
+
+  @@map("users")
+}
+
+model FleetOwner {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  primaryUserId        String        @map("primary_user_id") @db.Uuid
+  companyName          String?       @map("company_name") @db.VarChar(150)
+  ownerType            OwnerTierType @default(internal_company) @map("owner_type")
+  tinNumber            String?       @unique @map("tin_number") @db.VarChar(30)
+  platformCommissionPct Decimal      @default(0.00) @map("platform_commission_pct") @db.Decimal(5, 2)
+  payoutBankName       String?       @map("payout_bank_name") @db.VarChar(80)
+  payoutAccountNumber  String?       @map("payout_account_number") @db.VarChar(50)
+  instantBookEnabled   Boolean       @default(true) @map("instant_book_enabled")
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  primaryUser          User          @relation(fields: [primaryUserId], references: [id])
+  assets               Asset[]
+  settlements          OwnerSettlementLedger[]
+
+  @@map("fleet_owners")
+}
+
+model Asset {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId                 String            @map("owner_id") @db.Uuid
+  parentAssetId           String?           @map("parent_asset_id") @db.Uuid
+  category                AssetCategoryType
+  make                    String            @db.VarChar(80)
+  model                   String            @db.VarChar(80)
+  manufactureYear         Int               @map("manufacture_year")
+  plateNumber             String?           @unique @map("plate_number") @db.VarChar(30)
+  chassisOrSerialNumber   String            @unique @map("chassis_or_serial_number") @db.VarChar(80)
+  libreCertificateNo      String?           @map("libre_certificate_no") @db.VarChar(50)
+  bolloExpiryDate         DateTime?         @map("bollo_expiry_date") @db.Date
+  insuranceExpiryDate     DateTime?         @map("insurance_expiry_date") @db.Date
+  meterUnit               MeterUnitType     @map("meter_unit")
+  currentMeterReading     Decimal           @default(0.00) @map("current_meter_reading") @db.Decimal(12, 2)
+  requiresCompanyOperator Boolean           @default(false) @map("requires_company_operator")
+  gpsTrackerImei          String?           @unique @map("gps_tracker_imei") @db.VarChar(50)
+  status                  AssetStatusType   @default(available)
+  specs                   Json              @default("{}")
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  owner                   FleetOwner        @relation(fields: [ownerId], references: [id])
+  parentAsset             Asset?            @relation("AssetHierarchy", fields: [parentAssetId], references: [id], onDelete: SetNull)
+  attachments             Asset[]           @relation("AssetHierarchy")
+  rateCard                AssetRateCard?
+  bookingItems            BookingItem[]
+  maintenanceSchedules    MaintenanceSchedule[]
+
+  @@map("assets")
+}
+
+model AssetRateCard {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assetId                  String   @unique @map("asset_id") @db.Uuid
+  dailyRate                Decimal  @map("daily_rate") @db.Decimal(12, 2)
+  weeklyRate               Decimal? @map("weekly_rate") @db.Decimal(12, 2)
+  monthlyRate              Decimal? @map("monthly_rate") @db.Decimal(12, 2)
+  includedMeterUnitsPerDay Decimal  @default(8.00) @map("included_meter_units_per_day") @db.Decimal(8, 2)
+  overtimeRatePerUnit      Decimal  @default(0.00) @map("overtime_rate_per_unit") @db.Decimal(10, 2)
+  idleDayMinimumHours      Decimal? @default(4.00) @map("idle_day_minimum_hours") @db.Decimal(5, 2)
+  operatorDailyRate        Decimal  @default(0.00) @map("operator_daily_rate") @db.Decimal(10, 2)
+  operatorPerDiemRate      Decimal  @default(0.00) @map("operator_per_diem_rate") @db.Decimal(10, 2)
+  defaultMobilizationFee   Decimal? @default(0.00) @map("default_mobilization_fee") @db.Decimal(12, 2)
+  securityDepositAmount    Decimal  @default(0.00) @map("security_deposit_amount") @db.Decimal(12, 2)
+
+  asset                    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("asset_rate_cards")
+}
+
+model Booking {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingReference   String             @unique @map("booking_reference") @db.VarChar(25)
+  renterId           String             @map("renter_id") @db.Uuid
+  status             BookingStatusType  @default(draft)
+  bookingChannel     String             @default("internal_desk") @map("booking_channel") @db.VarChar(30)
+  pickupLocation     String             @map("pickup_location") @db.VarChar(200)
+  dropoffLocation    String             @map("dropoff_location") @db.VarChar(200)
+  projectSiteRegion  String?            @map("project_site_region") @db.VarChar(100)
+  isOutOfCity        Boolean            @default(false) @map("is_out_of_city")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  renter             User               @relation(fields: [renterId], references: [id])
+  items              BookingItem[]
+  collaterals        BookingCollateral[]
+  invoices           Invoice[]
+
+  @@map("bookings")
+}
+
+model BookingItem {
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId              String            @map("booking_id") @db.Uuid
+  assetId                String            @map("asset_id") @db.Uuid
+  assignedOperatorId     String?           @map("assigned_operator_id") @db.Uuid
+  rentalPeriodStart      DateTime          @map("rental_period_start") @db.Timestamptz
+  rentalPeriodEnd        DateTime          @map("rental_period_end") @db.Timestamptz
+  itemStatus             BookingStatusType @default(confirmed) @map("item_status")
+  meterStart             Decimal?          @map("meter_start") @db.Decimal(12, 2)
+  meterEnd               Decimal?          @map("meter_end") @db.Decimal(12, 2)
+  mobilizationFeeCharged Decimal           @default(0.00) @map("mobilization_fee_charged") @db.Decimal(12, 2)
+
+  booking                Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  asset                  Asset             @relation(fields: [assetId], references: [id])
+  assignedOperator       User?             @relation("OperatorBookings", fields: [assignedOperatorId], references: [id])
+  timesheets             MachineryDailyTimesheet[]
+  inspections            AssetInspection[]
+
+  @@map("booking_items")
+}
+
+model MachineryDailyTimesheet {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingItemId        String      @map("booking_item_id") @db.Uuid
+  timesheetDate        DateTime    @map("timesheet_date") @db.Date
+  engineHoursStart     Decimal     @map("engine_hours_start") @db.Decimal(10, 2)
+  engineHoursEnd       Decimal     @map("engine_hours_end") @db.Decimal(10, 2)
+  operatingHours       Decimal     @map("operating_hours") @db.Decimal(10, 2)
+  idleBreakdownHours   Decimal     @default(0.00) @map("idle_breakdown_hours") @db.Decimal(10, 2)
+  siteSupervisorName   String?     @map("site_supervisor_name") @db.VarChar(120)
+  siteSupervisorPhone  String?     @map("site_supervisor_phone") @db.VarChar(25)
+  siteSignatureUrl     String?     @map("site_signature_url") @db.Text
+  syncedOffline        Boolean     @default(false) @map("synced_offline")
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  bookingItem          BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+
+  @@map("machinery_daily_timesheets")
+}
+
+model BookingCollateral {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId           String         @map("booking_id") @db.Uuid
+  collateralType      CollateralType @map("collateral_type")
+  amount              Decimal        @db.Decimal(12, 2)
+  bankName            String?        @map("bank_name") @db.VarChar(80)
+  instrumentReference String?        @map("instrument_reference") @db.VarChar(60)
+  guarantorFullName   String?        @map("guarantor_full_name") @db.VarChar(150)
+  guarantorPhone      String?        @map("guarantor_phone") @db.VarChar(20)
+  guarantorFaydaFin   String?        @map("guarantor_fayda_fin") @db.VarChar(50)
+  guarantorEmployerTin String?       @map("guarantor_employer_tin") @db.VarChar(30)
+  contractDocumentUrl String?        @map("contract_document_url") @db.Text
+  isVerified          Boolean        @default(false) @map("is_verified")
+  verifiedByUserId    String?        @map("verified_by_user_id") @db.Uuid
+  verifiedAt          DateTime?      @map("verified_at") @db.Timestamptz
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  booking             Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("booking_collaterals")
+}
+
+model AssetInspection {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingItemId    String      @map("booking_item_id") @db.Uuid
+  inspectionType   String      @map("inspection_type") @db.VarChar(20)
+  inspectorUserId  String      @map("inspector_user_id") @db.Uuid
+  meterReading     Decimal     @map("meter_reading") @db.Decimal(12, 2)
+  fuelPercentage   Int         @default(100) @map("fuel_percentage")
+  damageMarkers    Json        @default("[]") @map("damage_markers")
+  walkaroundPhotos Json        @default("[]") @map("walkaround_photos")
+  signedAt         DateTime    @default(now()) @map("signed_at") @db.Timestamptz
+
+  bookingItem      BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+  inspector        User        @relation(fields: [inspectorUserId], references: [id])
+
+  @@map("asset_inspections")
+}
+
+model MaintenanceSchedule {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assetId               String    @map("asset_id") @db.Uuid
+  serviceIntervalKm     Decimal?  @default(5000.00) @map("service_interval_km") @db.Decimal(10, 2)
+  serviceIntervalHours  Decimal?  @default(250.00) @map("service_interval_hours") @db.Decimal(10, 2)
+  lastServiceMeter      Decimal   @default(0.00) @map("last_service_meter") @db.Decimal(12, 2)
+  nextServiceMeter      Decimal   @map("next_service_meter") @db.Decimal(12, 2)
+  status                String    @default("open") @db.VarChar(30)
+  isSafetyCriticalLock  Boolean   @default(false) @map("is_safety_critical_lock")
+  mechanicNotes         String?   @map("mechanic_notes") @db.Text
+  mechanicUserId        String?   @map("mechanic_user_id") @db.Uuid
+  serviceType           String    @default("preventative") @map("service_type") @db.VarChar(50)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  asset                 Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  mechanic              User?     @relation(fields: [mechanicUserId], references: [id])
+
+  @@map("maintenance_schedules")
+}
+
+model Invoice {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId               String    @map("booking_id") @db.Uuid
+  invoiceNumber           String    @unique @map("invoice_number") @db.VarChar(40)
+  baseRentalAmount        Decimal   @default(0.00) @map("base_rental_amount") @db.Decimal(12, 2)
+  overtimeUsageAmount     Decimal   @default(0.00) @map("overtime_usage_amount") @db.Decimal(12, 2)
+  operatorAndPerDiemAmount Decimal  @default(0.00) @map("operator_and_per_diem_amount") @db.Decimal(12, 2)
+  mobilizationAmount      Decimal   @default(0.00) @map("mobilization_amount") @db.Decimal(12, 2)
+  vat15PctAmount          Decimal   @default(0.00) @map("vat_15_pct_amount") @db.Decimal(12, 2)
+  withholding2PctAmount   Decimal   @default(0.00) @map("withholding_2_pct_amount") @db.Decimal(12, 2)
+  withholdingReceiptNo    String?   @map("withholding_receipt_no") @db.VarChar(50)
+  totalPayable            Decimal   @default(0.00) @map("total_payable") @db.Decimal(12, 2)
+  isPaid                  Boolean   @default(false) @map("is_paid")
+  paidAt                  DateTime? @map("paid_at") @db.Timestamptz
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  booking                 Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  settlements             OwnerSettlementLedger[]
+
+  @@map("invoices")
+}
+
+model OwnerSettlementLedger {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId               String    @map("invoice_id") @db.Uuid
+  ownerId                 String    @map("owner_id") @db.Uuid
+  grossRevenue            Decimal   @map("gross_revenue") @db.Decimal(12, 2)
+  platformCommissionPct   Decimal   @map("platform_commission_pct") @db.Decimal(5, 2)
+  platformCommissionAmount Decimal  @map("platform_commission_amount") @db.Decimal(12, 2)
+  workshopRepairDeduction Decimal   @default(0.00) @map("workshop_repair_deduction") @db.Decimal(12, 2)
+  netPayoutAmount         Decimal   @map("net_payout_amount") @db.Decimal(12, 2)
+  settlementStatus        String    @default("pending") @map("settlement_status") @db.VarChar(30)
+  disbursedAt             DateTime? @map("disbursed_at") @db.Timestamptz
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  invoice                 Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  owner                   FleetOwner @relation(fields: [ownerId], references: [id])
+
+  @@map("owner_settlement_ledgers")
+}
