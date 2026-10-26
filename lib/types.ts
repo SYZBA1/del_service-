@@ -502,3 +502,82 @@ export interface Broker {
   notes?: string;
   createdAt: string;
 }
+
+// ----------------------------------------------------
+// TENDER MODULE & DEL'S BOT INTELLIGENCE TYPES
+// ----------------------------------------------------
+
+export type TenderSource = 'merkato' | 'egp';
+export type TenderStatus = 'open' | 'review' | 'bid_prepared' | 'submitted' | 'won' | 'closed';
+export type TenderCategory = 'car_rental' | 'heavy_machinery' | 'mixed';
+
+export interface TenderRequiredFleetItem {
+  category: string;
+  description: string;
+  quantity: number;
+  matchingAssetId?: string;
+  matchingAssetName?: string;
+  availableCount: number;
+}
+
+export interface TenderChecklistItem {
+  id: string;
+  taskEn: string;
+  taskAm: string;
+  category: 'cpo' | 'license' | 'technical' | 'financial' | 'submission';
+  deadline: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  notes?: string;
+}
+
+export interface TenderItem {
+  id: string;
+  title: string;
+  titleAmharic: string;
+  refNumber: string;
+  source: TenderSource;
+  sourceName: string;
+  sourceUrl: string;
+  issuingOrganization: string;
+  issuingOrganizationAmharic: string;
+  targetDivision: 'elshaday' | 'liora' | 'both';
+  category: TenderCategory;
+  location: string;
+  publishDate: string;
+  closingDate: string;
+  closingCountdown: string;
+  estimatedBudgetETB: number;
+  cpoAmountETB: number;
+  matchScore: number; // 0 - 100
+  matchGrade: 'high' | 'medium' | 'low';
+  matchSummary: string;
+  matchSummaryAmharic: string;
+  requirements: {
+    technical: string[];
+    administrative: string[];
+    compliance: string[];
+  };
+  requiredFleet: TenderRequiredFleetItem[];
+  status: TenderStatus;
+  purchasedDocUrl?: string;
+  purchasedDocName?: string;
+  checklist: TenderChecklistItem[];
+  createdAt: string;
+}
+
+export interface DelsBotMessage {
+  id: string;
+  sender: 'user' | 'bot';
+  content: string;
+  contentAmharic?: string;
+  language: 'en' | 'am';
+  timestamp: string;
+  roleScopedDivision?: 'elshaday' | 'liora' | 'dalol' | 'all';
+  isRestricted?: boolean;
+  metadata?: {
+    relevantTenders?: string[];
+    queriedStats?: Record<string, any>;
+    fleetMatched?: string[];
+    checklistGenerated?: boolean;
+  };
+}

@@ -22,6 +22,7 @@ import {
   X,
   ExternalLink,
   Shield,
+  FileSignature,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTenant } from "@/context/TenantContext";
@@ -40,6 +41,7 @@ export function AppSidebar() {
           group: "Operations",
           items: [
             { label: "Command Center", href: "/dashboard", icon: LayoutDashboard },
+            { label: "Tenders", href: "/tenders", icon: FileSignature },
             { label: "Dispatch Gantt", href: "/dispatch/calendar", icon: CalendarDays },
             { label: "Bookings", href: "/bookings/new", icon: PlusCircle },
             { label: "Inspections", href: "/operations/inspect", icon: ClipboardCheck },
@@ -69,6 +71,7 @@ export function AppSidebar() {
           group: "Operations",
           items: [
             { label: "Command Center", href: "/dashboard", icon: LayoutDashboard },
+            { label: "Tenders", href: "/tenders", icon: FileSignature },
             { label: "Dispatch Gantt", href: "/dispatch/calendar", icon: CalendarDays },
             { label: "Bookings", href: "/bookings/new", icon: PlusCircle },
             { label: "Inspections", href: "/operations/inspect", icon: ClipboardCheck },
@@ -99,6 +102,7 @@ export function AppSidebar() {
           group: "Operations",
           items: [
             { label: "Command Center", href: "/dashboard", icon: LayoutDashboard },
+            { label: "Tenders", href: "/tenders", icon: FileSignature },
             { label: "Bookings", href: "/bookings/new", icon: PlusCircle },
           ],
         },
@@ -123,6 +127,7 @@ export function AppSidebar() {
         group: "Operations",
         items: [
           { label: "Command Center", href: "/dashboard", icon: LayoutDashboard },
+          { label: "Tenders", href: "/tenders", icon: FileSignature },
           { label: "Dispatch Gantt", href: "/dispatch/calendar", icon: CalendarDays },
           { label: "Bookings", href: "/bookings/new", icon: PlusCircle },
           { label: "Inspections", href: "/operations/inspect", icon: ClipboardCheck },
