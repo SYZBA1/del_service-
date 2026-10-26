@@ -12,7 +12,14 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get("source");
     const search = searchParams.get("search");
 
-    let filtered = [...runtimeTenders];
+    const now = new Date();
+    // Automatic Expired Tender Filtering: Exclude any tender whose deadline has passed
+    const activeTenders = runtimeTenders.filter((t) => {
+      if (!t.closingDate) return true;
+      return new Date(t.closingDate).getTime() + 86400000 >= now.getTime();
+    });
+
+    let filtered = [...activeTenders];
 
     if (division && division !== "all") {
       filtered = filtered.filter(
@@ -36,25 +43,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const totalEstimatedBudgetETB = runtimeTenders.reduce(
+    const totalEstimatedBudgetETB = activeTenders.reduce(
       (acc, t) => acc + t.estimatedBudgetETB,
       0
     );
-    const elshadayCount = runtimeTenders.filter(
+    const elshadayCount = activeTenders.filter(
       (t) => t.targetDivision === "elshaday" || t.targetDivision === "both"
     ).length;
-    const lioraCount = runtimeTenders.filter(
+    const lioraCount = activeTenders.filter(
       (t) => t.targetDivision === "liora" || t.targetDivision === "both"
     ).length;
-    const merkatoCount = runtimeTenders.filter((t) => t.source === "merkato").length;
-    const egpCount = runtimeTenders.filter((t) => t.source === "egp").length;
+    const merkatoCount = activeTenders.filter((t) => t.source === "merkato").length;
+    const egpCount = activeTenders.filter((t) => t.source === "egp").length;
 
     return NextResponse.json({
       success: true,
       count: filtered.length,
       data: filtered,
       summary: {
-        totalTenders: runtimeTenders.length,
+        totalTenders: activeTenders.length,
         totalEstimatedBudgetETB,
         elshadayCount,
         lioraCount,

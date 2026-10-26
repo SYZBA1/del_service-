@@ -7,6 +7,7 @@ import { TopUtilityBar } from "./TopUtilityBar";
 import { useTenant } from "@/context/TenantContext";
 
 import { BrandLogoLoader } from "./BrandLogoLoader";
+import { DelsBotWidget } from "./DelsBotWidget";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -51,6 +52,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Floating Bottom-Right Del's Bot AI Assistant & Voice Interface */}
+      <DelsBotWidget />
     </div>
   );
 }

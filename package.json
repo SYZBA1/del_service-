@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@tanstack/react-table": "^8.20.5",
     "@types/leaflet": "^1.9.22",
     "class-variance-authority": "^0.7.1",

@@ -48,6 +48,12 @@ interface TenantContextType {
   clearAllNotifications: () => Promise<boolean>;
   latestLiveAlert: SystemNotification | null;
   dismissLiveAlert: () => void;
+  // Del's Bot AI Assistant Global Controls
+  isDelsBotOpen: boolean;
+  openDelsBot: (query?: string) => void;
+  closeDelsBot: () => void;
+  delsBotInitialQuery: string | undefined;
+  clearDelsBotInitialQuery: () => void;
   // Mobile Sidebar Drawer
   isMobileSidebarOpen: boolean;
   toggleMobileSidebar: () => void;
@@ -103,7 +109,16 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [latestLiveAlert, setLatestLiveAlert] = useState<SystemNotification | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDelsBotOpen, setIsDelsBotOpen] = useState(false);
+  const [delsBotInitialQuery, setDelsBotInitialQuery] = useState<string | undefined>(undefined);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
+
+  const openDelsBot = (query?: string) => {
+    if (query) setDelsBotInitialQuery(query);
+    setIsDelsBotOpen(true);
+  };
+  const closeDelsBot = () => setIsDelsBotOpen(false);
+  const clearDelsBotInitialQuery = () => setDelsBotInitialQuery(undefined);
 
   const isPublicRoute = pathname === "/" || pathname === "/login" || pathname === "/reset-password";
   const isSuperAdmin = currentUser?.role === "head_dispatcher" || (currentUser as any)?.role === "super_admin";
@@ -472,6 +487,11 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         clearAllNotifications,
         latestLiveAlert,
         dismissLiveAlert,
+        isDelsBotOpen,
+        openDelsBot,
+        closeDelsBot,
+        delsBotInitialQuery,
+        clearDelsBotInitialQuery,
         isMobileSidebarOpen,
         toggleMobileSidebar,
         closeMobileSidebar,

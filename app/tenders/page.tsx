@@ -20,7 +20,6 @@ import {
   HardHat,
   Filter,
   DollarSign,
-  Layers,
   ChevronRight,
   Bot,
   Volume2,
@@ -32,10 +31,9 @@ import {
 import { useTenant } from "@/context/TenantContext";
 import { cn, formatETB } from "@/lib/utils";
 import { TenderItem, TenderChecklistItem } from "@/lib/types";
-import { DelsBotModal } from "@/components/DelsBotModal";
 
 export default function TendersPage() {
-  const { currentUser } = useTenant();
+  const { currentUser, openDelsBot } = useTenant();
   const role = currentUser?.role || "head_dispatcher";
 
   const [tenders, setTenders] = useState<TenderItem[]>([]);
@@ -44,10 +42,6 @@ export default function TendersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDivisionTab, setSelectedDivisionTab] = useState<"all" | "elshaday" | "liora">("all");
   const [selectedSourceTab, setSelectedSourceTab] = useState<"all" | "merkato" | "egp">("all");
-
-  // Del's Bot Modal State
-  const [isBotOpen, setIsBotOpen] = useState(false);
-  const [botInitialQuery, setBotInitialQuery] = useState<string | undefined>(undefined);
 
   // Active Tender Detail & Checklist Modal
   const [activeChecklistTender, setActiveChecklistTender] = useState<TenderItem | null>(null);
@@ -106,7 +100,6 @@ export default function TendersPage() {
   const handleToggleChecklistTask = async (tenderId: string, checklistId: string, currentStatus: string) => {
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
     try {
-      // Optimistic update
       setTenders((prev) =>
         prev.map((t) => {
           if (t.id !== tenderId) return t;
@@ -167,7 +160,7 @@ export default function TendersPage() {
       const json = await res.json();
       if (json.success && json.data) {
         setRagUploadSuccess(
-          `RAG Analysis Complete: Ingested '${uploadedFileName}'. Extracted ETB ${json.data.detectedCPOAmount.toLocaleString()} CPO bond requirement and ${json.data.checklist.length} compliance checklist milestones.`
+          `RAG Extraction Complete: Ingested '${uploadedFileName}'. Extracted ETB ${json.data.detectedCPOAmount.toLocaleString()} CPO requirement and ${json.data.checklist.length} compliance checklist tasks.`
         );
         loadTenders();
       }
@@ -189,7 +182,7 @@ export default function TendersPage() {
     }
 
     const briefingText =
-      "Good morning DEL Services team. Here is your automated tender intelligence briefing from 2merkato.com and the Ethiopian Government EGP portal. We have 6 active high-probability tenders with total contract pipeline value exceeding 82 million Birr. For Liora Heavy Machinery, the Ethiopian Roads Administration highway tender is our top 96 percent match, closing in 17 days. For Elshaday Car Rental, Ethio Telecom's 4WD tower maintenance fleet is our top 94 percent match, requiring 10 Hilux units. All required machinery and vehicles are in stock in our yards. Have a productive dispatch day.";
+      "Good morning DEL Services team. Here is your automated tender intelligence briefing from 2merkato.com and the Ethiopian Government EGP portal. All expired opportunities have been filtered out. For Liora Heavy Machinery, the Ethiopian Roads Administration expressway tender is our top 96 percent match. For Elshaday Car Rental, Ethio Telecom's 4WD tower maintenance fleet is our top 94 percent match. All required machinery and vehicles are available in our yards.";
 
     const utterance = new SpeechSynthesisUtterance(briefingText);
     utterance.rate = 1.0;
@@ -199,22 +192,37 @@ export default function TendersPage() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Filter Tenders
-  const filteredTenders = tenders.filter((t) => {
-    // Division filter
+  // ----------------------------------------------------
+  // AUTOMATIC EXPIRED TENDER FILTERING
+  // ----------------------------------------------------
+  const now = new Date();
+  const activeUnexpiredTenders = tenders.filter((t) => {
+    if (!t.closingDate) return true;
+    const closingDate = new Date(t.closingDate);
+    // Allow through end of closing day (+24h)
+    return closingDate.getTime() + 86400000 >= now.getTime();
+  });
+
+  const getDaysRemaining = (closingDateStr: string) => {
+    const closing = new Date(closingDateStr);
+    const diffMs = closing.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return "Closing Today";
+    if (diffDays === 1) return "1 Day Left";
+    return `${diffDays} Days Left`;
+  };
+
+  // Filter Tenders by Tab and Search
+  const filteredTenders = activeUnexpiredTenders.filter((t) => {
     if (selectedDivisionTab === "elshaday" && t.targetDivision !== "elshaday" && t.targetDivision !== "both") {
       return false;
     }
     if (selectedDivisionTab === "liora" && t.targetDivision !== "liora" && t.targetDivision !== "both") {
       return false;
     }
-
-    // Source filter
     if (selectedSourceTab !== "all" && t.source !== selectedSourceTab) {
       return false;
     }
-
-    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (
@@ -225,224 +233,162 @@ export default function TendersPage() {
         t.location.toLowerCase().includes(q)
       );
     }
-
     return true;
   });
 
-  // Aggregate Metrics
-  const totalBudgetETB = tenders.reduce((acc, t) => acc + t.estimatedBudgetETB, 0);
-  const totalCpoETB = tenders.reduce((acc, t) => acc + t.cpoAmountETB, 0);
-  const elshadayCount = tenders.filter((t) => t.targetDivision === "elshaday" || t.targetDivision === "both").length;
-  const lioraCount = tenders.filter((t) => t.targetDivision === "liora" || t.targetDivision === "both").length;
+  // Aggregate Metrics based on active unexpired opportunities
+  const totalBudgetETB = activeUnexpiredTenders.reduce((acc, t) => acc + t.estimatedBudgetETB, 0);
+  const totalCpoETB = activeUnexpiredTenders.reduce((acc, t) => acc + t.cpoAmountETB, 0);
+  const elshadayCount = activeUnexpiredTenders.filter((t) => t.targetDivision === "elshaday" || t.targetDivision === "both").length;
+  const lioraCount = activeUnexpiredTenders.filter((t) => t.targetDivision === "liora" || t.targetDivision === "both").length;
 
   return (
-    <div className="space-y-6 pb-16 font-sans">
-      {/* Page Title & Actions Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-5">
+    <div className="space-y-5 pb-16 font-sans">
+      {/* ---------------------------------------------------- */}
+      {/* HEADER: Clean Minimalist Title & Icon-Only Controls  */}
+      {/* ---------------------------------------------------- */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#df2531]/20 to-neutral-900 border border-[#df2531]/40 text-[#df2531]">
-              <FileSignature size={22} />
-            </div>
-            <div>
-              <h1 className="font-display font-bold text-xl sm:text-2xl text-white tracking-wide flex items-center gap-2">
-                Tender Intelligence &amp; Procurement Hub
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase font-bold">
-                  Live Sync
-                </span>
-              </h1>
-              <p className="text-xs text-neutral-400">
-                Automated Scraping from <span className="text-white font-semibold">2merkato.com</span> &amp;{" "}
-                <span className="text-white font-semibold">Ethiopian EGP (egp.ppa.gov.et)</span> • AI Fleet Match • RAG Compliance Reader
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display font-bold text-lg sm:text-xl text-white tracking-wide">
+              Tender Intelligence &amp; Procurement
+            </h1>
           </div>
+          <p className="text-[11px] text-neutral-400 mt-0.5">
+            Real-time opportunities from <strong className="text-neutral-200">2merkato.com</strong> &amp; <strong className="text-neutral-200">Ethiopian EGP (egp.ppa.gov.et)</strong> • Active RFPs Only
+          </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Ask Del's Bot */}
+        {/* Compact Icon-Only Action Buttons (32px × 32px) with Hover Tooltips (Per Requirement 4) */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          {/* Ask Del's Bot AI (32px × 32px) */}
           <button
-            onClick={() => {
-              setBotInitialQuery("Give me a comprehensive tender summary of all active Merkato and EGP opportunities");
-              setIsBotOpen(true);
-            }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-neutral-900 to-black hover:border-[#df2531] border border-[#df2531]/50 text-white text-xs font-bold transition-all shadow-md shadow-[#df2531]/15 group cursor-pointer"
+            onClick={() =>
+              openDelsBot("Provide an overview of all active open tenders from 2merkato and EGP.")
+            }
+            className="h-8 w-8 rounded-xl border border-neutral-800 hover:border-[#df2531] bg-neutral-900/90 hover:bg-[#df2531]/15 text-neutral-300 hover:text-white transition-all flex items-center justify-center cursor-pointer shadow-sm"
+            title="Ask Del's Bot AI (Voice & Intelligence)"
+            aria-label="Ask Del's Bot AI"
           >
-            <Bot size={15} className="text-[#df2531] group-hover:scale-110 transition-transform" />
-            <span>Ask Del's Bot</span>
+            <Bot size={15} className="text-[#df2531]" />
           </button>
 
-          {/* Listen to Morning Briefing */}
+          {/* Listen to Daily Morning Briefing (32px × 32px) */}
           <button
             onClick={handlePlayBriefing}
             className={cn(
-              "flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-md",
+              "h-8 w-8 rounded-xl border transition-all flex items-center justify-center cursor-pointer shadow-sm",
               isSpeakingBriefing
                 ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 animate-pulse"
-                : "bg-neutral-900 border-neutral-700 hover:border-neutral-500 text-neutral-200"
+                : "border-neutral-800 hover:border-neutral-600 bg-neutral-900/90 text-neutral-300 hover:text-white"
             )}
-            title="Listen to Morning AI Briefing"
+            title={isSpeakingBriefing ? "Stop Briefing Audio" : "Listen to Morning Tender Briefing"}
+            aria-label="Listen to Briefing"
           >
-            {isSpeakingBriefing ? <VolumeX size={15} /> : <Volume2 size={15} className="text-[#df2531]" />}
-            <span>{isSpeakingBriefing ? "Stop Briefing" : "Listen to Morning Briefing"}</span>
+            {isSpeakingBriefing ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
 
-          {/* Upload Purchased RFP Doc (Post-Purchase RAG) */}
+          {/* Upload Purchased RFP Document (32px × 32px) */}
           <button
             onClick={() => {
               setUploadTenderTargetId(null);
               setUploadedFileName("ERA_Highway_RFP_Contract_Specification_2026.pdf");
               setIsUploadModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white text-xs font-bold transition-all cursor-pointer"
+            className="h-8 w-8 rounded-xl border border-neutral-800 hover:border-neutral-600 bg-neutral-900/90 text-neutral-300 hover:text-white transition-all flex items-center justify-center cursor-pointer shadow-sm"
+            title="Upload Purchased RFP Document (Post-Purchase RAG Reader)"
+            aria-label="Upload RFP Document"
           >
-            <Upload size={14} className="text-[#df2531]" />
-            <span>Upload RFP Doc (RAG)</span>
+            <Upload size={14} />
           </button>
 
-          {/* Fetch Live (Merkato & EGP) Scraper */}
+          {/* Refresh / Fetch Latest (32px × 32px) */}
           <button
             onClick={handleFetchLiveTenders}
             disabled={fetchingLive}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold transition-all shadow-lg shadow-[#df2531]/25 disabled:opacity-50 cursor-pointer"
+            className="h-8 w-8 rounded-xl border border-neutral-800 hover:border-[#df2531] bg-neutral-900/90 hover:bg-[#df2531]/20 text-neutral-300 hover:text-white transition-all flex items-center justify-center disabled:opacity-40 cursor-pointer shadow-sm"
+            title="Fetch Latest Tenders from 2merkato.com & EGP"
+            aria-label="Fetch Latest Tenders"
           >
-            <RefreshCw size={14} className={cn(fetchingLive && "animate-spin")} />
-            <span>{fetchingLive ? "Scraping Portals..." : "Fetch Latest (Merkato & EGP)"}</span>
+            <RefreshCw size={13} className={cn(fetchingLive && "animate-spin text-[#df2531]")} />
           </button>
         </div>
       </div>
 
-      {/* Top Metric KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800 space-y-1">
-          <div className="flex items-center justify-between text-neutral-400 text-xs">
-            <span className="font-semibold">Active Tenders</span>
-            <FileSignature size={15} className="text-[#df2531]" />
-          </div>
-          <div className="text-2xl font-black text-white font-mono">{tenders.length}</div>
-          <div className="text-[10px] text-emerald-400 font-mono">100% Verified RFPs</div>
+      {/* ---------------------------------------------------- */}
+      {/* MINIMALIST METRICS BAR (Uncluttered Streamlined View) */}
+      {/* ---------------------------------------------------- */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800/60">
+          <span className="text-[10px] text-neutral-400 uppercase font-mono block">Active Open Tenders</span>
+          <div className="text-xl font-bold text-white font-mono mt-0.5">{activeUnexpiredTenders.length}</div>
+          <span className="text-[10px] text-neutral-500 font-mono">Expired auto-filtered</span>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800 space-y-1">
-          <div className="flex items-center justify-between text-neutral-400 text-xs">
-            <span className="font-semibold">Elshaday Car RFPs</span>
-            <Car size={15} className="text-[#df2531]" />
-          </div>
-          <div className="text-2xl font-black text-white font-mono">{elshadayCount}</div>
-          <div className="text-[10px] text-neutral-400 font-mono">Top Match: 94% (Hilux GD-6)</div>
+        <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800/60">
+          <span className="text-[10px] text-neutral-400 uppercase font-mono block">Elshaday Car Fleet</span>
+          <div className="text-xl font-bold text-white font-mono mt-0.5">{elshadayCount}</div>
+          <span className="text-[10px] text-neutral-500 font-mono">Top: 94% Match Fit</span>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800 space-y-1">
-          <div className="flex items-center justify-between text-neutral-400 text-xs">
-            <span className="font-semibold">Liora Machinery RFPs</span>
-            <HardHat size={15} className="text-[#df2531]" />
-          </div>
-          <div className="text-2xl font-black text-white font-mono">{lioraCount}</div>
-          <div className="text-[10px] text-neutral-400 font-mono">Top Match: 96% (CAT 320D)</div>
+        <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800/60">
+          <span className="text-[10px] text-neutral-400 uppercase font-mono block">Liora Heavy Machinery</span>
+          <div className="text-xl font-bold text-white font-mono mt-0.5">{lioraCount}</div>
+          <span className="text-[10px] text-neutral-500 font-mono">Top: 96% Match Fit</span>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800 space-y-1">
-          <div className="flex items-center justify-between text-neutral-400 text-xs">
-            <span className="font-semibold">Pipeline Value</span>
-            <DollarSign size={15} className="text-emerald-400" />
-          </div>
-          <div className="text-xl font-black text-white font-mono truncate">
+        <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800/60">
+          <span className="text-[10px] text-neutral-400 uppercase font-mono block">Pipeline Contract Value</span>
+          <div className="text-xl font-bold text-white font-mono mt-0.5 truncate">
             ETB {(totalBudgetETB / 1000000).toFixed(1)}M
           </div>
-          <div className="text-[10px] text-neutral-400 font-mono">Total Potential Contracts</div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800 space-y-1 col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-neutral-400 text-xs">
-            <span className="font-semibold">CPO Bid Bonds Req.</span>
-            <ShieldCheck size={15} className="text-[#df2531]" />
-          </div>
-          <div className="text-xl font-black text-[#df2531] font-mono truncate">
-            ETB {(totalCpoETB / 1000).toFixed(0)}k
-          </div>
-          <div className="text-[10px] text-neutral-400 font-mono">CBE &amp; Awash Bank Ready</div>
+          <span className="text-[10px] text-neutral-500 font-mono">CPO: ETB {(totalCpoETB / 1000).toFixed(0)}k</span>
         </div>
       </div>
 
-      {/* Daily Morning AI Briefing Banner */}
-      <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-neutral-950 via-[#14080a] to-[#0a0a0a] border border-[#df2531]/40 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#df2531]/15 border border-[#df2531]/40 text-[#df2531] shadow-md shadow-[#df2531]/20">
-              <Bot size={22} />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-sm text-white">
-                  Del's Bot Morning Tender Briefing
-                </span>
-                <span className="text-[9px] font-mono font-bold px-2 py-0.2 rounded bg-[#df2531]/20 text-[#df2531] border border-[#df2531]/40 uppercase">
-                  Daily 07:00 AM EAT
-                </span>
-              </div>
-              <p className="text-xs text-neutral-300 leading-relaxed max-w-3xl">
-                Automated fetch complete across <strong className="text-white">2merkato.com</strong> and{" "}
-                <strong className="text-white">Ethiopian Government EGP</strong>. <strong className="text-[#df2531]">6 high-probability opportunities</strong> identified. Top recommendations:{" "}
-                <span className="text-white underline">ERA Modjo-Hawassa Heavy Equipment (96% Fit)</span> and{" "}
-                <span className="text-white underline">Ethio Telecom 4WD Field Towers Fleet (94% Fit)</span>. All matching assets currently available in Bole and Kality yards.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={handlePlayBriefing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold transition-all shadow-md shadow-[#df2531]/20 shrink-0 cursor-pointer"
-          >
-            {isSpeakingBriefing ? <VolumeX size={15} /> : <Volume2 size={15} />}
-            <span>{isSpeakingBriefing ? "Stop Voice" : "Listen (ድምፅ አጫውት)"}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#0a0a0a] p-3 rounded-2xl border border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Division Filters */}
-          <div className="flex items-center bg-neutral-900 p-1 rounded-xl border border-neutral-800 text-xs">
+      {/* ---------------------------------------------------- */}
+      {/* STREAMLINED FILTER & SEARCH TABS                     */}
+      {/* ---------------------------------------------------- */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Division Filter */}
+          <div className="flex items-center bg-neutral-950 p-1 rounded-xl border border-neutral-800/80 text-xs">
             <button
               onClick={() => setSelectedDivisionTab("all")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
-                selectedDivisionTab === "all" ? "bg-[#df2531] text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedDivisionTab === "all" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
-              All Divisions ({tenders.length})
+              All ({activeUnexpiredTenders.length})
             </button>
             <button
               onClick={() => setSelectedDivisionTab("elshaday")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                selectedDivisionTab === "elshaday" ? "bg-[#df2531] text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedDivisionTab === "elshaday" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
-              <Car size={13} />
-              Elshaday Cars ({elshadayCount})
+              Elshaday ({elshadayCount})
             </button>
             <button
               onClick={() => setSelectedDivisionTab("liora")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                selectedDivisionTab === "liora" ? "bg-[#df2531] text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedDivisionTab === "liora" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
-              <HardHat size={13} />
-              Liora Machinery ({lioraCount})
+              Liora ({lioraCount})
             </button>
           </div>
 
-          {/* Source Filters (Merkato vs EGP) */}
-          <div className="flex items-center bg-neutral-900 p-1 rounded-xl border border-neutral-800 text-xs">
+          {/* Source Filter */}
+          <div className="flex items-center bg-neutral-950 p-1 rounded-xl border border-neutral-800/80 text-xs">
             <button
               onClick={() => setSelectedSourceTab("all")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
-                selectedSourceTab === "all" ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedSourceTab === "all" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
               All Sources
@@ -450,204 +396,159 @@ export default function TendersPage() {
             <button
               onClick={() => setSelectedSourceTab("merkato")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
-                selectedSourceTab === "merkato" ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedSourceTab === "merkato" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
-              2merkato.com
+              2merkato
             </button>
             <button
               onClick={() => setSelectedSourceTab("egp")}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
-                selectedSourceTab === "egp" ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white"
+                "px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer",
+                selectedSourceTab === "egp" ? "bg-neutral-800 text-white font-bold" : "text-neutral-400 hover:text-white"
               )}
             >
-              EGP Government
+              EGP
             </button>
           </div>
         </div>
 
-        {/* Search Input */}
-        <div className="relative min-w-[240px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+        {/* Minimal Search Input */}
+        <div className="relative min-w-[200px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tender title, client, ref number..."
-            className="w-full pl-9 pr-4 py-2 bg-neutral-900 border border-neutral-800 focus:border-[#df2531] rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none transition-all"
+            placeholder="Search tenders..."
+            className="w-full pl-8 pr-3 py-1.5 bg-neutral-950 border border-neutral-800 focus:border-[#df2531] rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none transition-all"
           />
         </div>
       </div>
 
-      {/* Tender Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ---------------------------------------------------- */}
+      {/* MINIMALIST TENDER CARDS LIST                         */}
+      {/* ---------------------------------------------------- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {filteredTenders.map((tender) => {
-          const isLiora = tender.targetDivision === "liora";
-          const isElshaday = tender.targetDivision === "elshaday";
+          const daysLeftStr = getDaysRemaining(tender.closingDate);
 
           return (
             <div
               key={tender.id}
-              className="rounded-2xl bg-[#0a0a0a] border border-neutral-800/90 hover:border-[#df2531]/60 p-5 space-y-4 transition-all shadow-lg hover:shadow-2xl hover:shadow-[#df2531]/10 flex flex-col justify-between"
+              className="rounded-2xl bg-neutral-950/90 border border-neutral-800/70 hover:border-neutral-700 p-4 space-y-3 transition-all flex flex-col justify-between"
             >
-              <div className="space-y-3">
-                {/* Card Top Metadata Bar */}
-                <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase border",
-                        tender.source === "merkato"
-                          ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                          : "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                      )}
-                    >
-                      {tender.sourceName}
+              <div className="space-y-2.5">
+                {/* Top Row: Source, Ref, Match % */}
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-300 font-semibold">
+                      {tender.source === "merkato" ? "2merkato.com" : "EGP Portal"}
                     </span>
-
-                    <span className="text-[10px] font-mono text-neutral-400">
-                      Ref: <strong className="text-white">{tender.refNumber}</strong>
+                    <span className="text-[10px] font-mono text-neutral-500">
+                      Ref: {tender.refNumber}
                     </span>
                   </div>
 
-                  {/* High Match Score Badge */}
-                  <div
+                  <span
                     className={cn(
-                      "flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-mono font-bold text-xs border shadow-sm",
+                      "text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border",
                       tender.matchScore >= 90
-                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                        : "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                        ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                        : "bg-amber-950/40 border-amber-500/40 text-amber-300"
                     )}
                   >
-                    <Sparkles size={12} />
-                    <span>{tender.matchScore}% Match Fit</span>
-                  </div>
+                    {tender.matchScore}% Match
+                  </span>
                 </div>
 
-                {/* Title & Issuing Organization */}
+                {/* Tender Titles */}
                 <div>
-                  <h3 className="font-display font-bold text-base text-white leading-snug">
+                  <h3 className="font-display font-semibold text-sm text-white leading-snug">
                     {tender.title}
                   </h3>
-                  <p className="text-xs text-[#df2531] font-medium mt-0.5 font-sans">
+                  <p className="text-[11px] text-neutral-400 font-sans mt-0.5 line-clamp-1">
                     {tender.titleAmharic}
                   </p>
-                  <p className="text-xs text-neutral-400 font-sans mt-1 flex items-center gap-1.5">
-                    <Building2 size={13} className="text-neutral-500 shrink-0" />
-                    <span className="text-white font-medium">{tender.issuingOrganization}</span>
-                    <span className="text-neutral-500">•</span>
+                  <p className="text-[11px] text-neutral-500 mt-1 flex items-center gap-1">
+                    <Building2 size={12} className="text-neutral-500 shrink-0" />
+                    <span>{tender.issuingOrganization}</span>
+                    <span>•</span>
                     <span>{tender.location}</span>
                   </p>
                 </div>
 
-                {/* Match Summary Note */}
-                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-300 space-y-1">
-                  <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                    <CheckCircle2 size={13} />
-                    <span>DEL Services Capability Match</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-400 leading-relaxed">
-                    {tender.matchSummary}
-                  </p>
-                </div>
-
-                {/* Required Fleet Table Breakdown */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-bold uppercase text-neutral-400 tracking-wider flex items-center justify-between">
-                    <span>Required Equipment / Fleet</span>
-                    <span className="text-[10px] text-emerald-400 font-mono">Inventory Ready</span>
-                  </div>
-                  <div className="space-y-1.5">
+                {/* Required Fleet Mini Pills */}
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono text-neutral-500 block">Fleet Required</span>
+                  <div className="flex flex-wrap gap-1.5">
                     {tender.requiredFleet.map((rf, idx) => (
-                      <div
+                      <span
                         key={idx}
-                        className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-neutral-900/80 border border-neutral-800 text-xs"
+                        className="text-[10px] px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800/80 text-neutral-300 flex items-center gap-1"
                       >
-                        <div className="flex items-center gap-2">
-                          {rf.category === "heavy_machinery" ? (
-                            <Truck size={13} className="text-[#df2531]" />
-                          ) : (
-                            <Car size={13} className="text-emerald-400" />
-                          )}
-                          <span className="text-white font-medium">{rf.description}</span>
-                        </div>
-                        <div className="flex items-center gap-2 font-mono text-[11px]">
-                          <span className="text-neutral-400">Req: {rf.quantity}</span>
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
-                            Available: {rf.availableCount}
-                          </span>
-                        </div>
-                      </div>
+                        {rf.category === "heavy_machinery" ? <Truck size={10} /> : <Car size={10} />}
+                        <span>{rf.quantity}x {rf.description.split("(")[0]}</span>
+                      </span>
                     ))}
                   </div>
                 </div>
 
-                {/* Commercial Figures: Budget & CPO Bond */}
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-800/80 text-xs">
+                {/* Commercials: Value & CPO */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-900 text-xs font-mono">
                   <div>
-                    <span className="text-[10px] text-neutral-400 block uppercase font-mono">Estimated Contract Value</span>
-                    <span className="font-bold font-mono text-white text-sm">
+                    <span className="text-[9px] text-neutral-500 block uppercase">Est. Value</span>
+                    <span className="text-xs font-bold text-neutral-200">
                       ETB {formatETB(tender.estimatedBudgetETB)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-neutral-400 block uppercase font-mono">Bid Security CPO Bond</span>
-                    <span className="font-bold font-mono text-[#df2531] text-sm">
+                    <span className="text-[9px] text-neutral-500 block uppercase">CPO Guarantee</span>
+                    <span className="text-xs font-bold text-[#df2531]">
                       ETB {formatETB(tender.cpoAmountETB)}
                     </span>
                   </div>
                 </div>
 
-                {/* Deadline & Closing Countdown */}
-                <div className="flex items-center justify-between text-xs text-neutral-400 pt-1">
-                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                    <Clock size={13} className="text-amber-400" />
-                    <span>Closing: {tender.closingDate}</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold text-[10px]">
-                    {tender.closingCountdown}
-                  </span>
+                {/* Deadline */}
+                <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-0.5 font-mono">
+                  <span>Closing: {tender.closingDate}</span>
+                  <span className="text-amber-400/90 font-semibold">{daysLeftStr}</span>
                 </div>
               </div>
 
-              {/* Action Buttons Footer */}
-              <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-neutral-800">
-                {/* Ask Del's Bot about this Tender */}
+              {/* Minimalist Action Toolbar */}
+              <div className="flex items-center gap-2 pt-3 border-t border-neutral-900">
                 <button
-                  onClick={() => {
-                    setBotInitialQuery(`Analyze tender ${tender.refNumber} (${tender.title}) against our fleet and explain how we can win this bid.`);
-                    setIsBotOpen(true);
-                  }}
-                  className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-[#df2531]/20 hover:border-[#df2531] border border-neutral-700 text-white text-xs font-bold transition-all cursor-pointer"
+                  onClick={() =>
+                    openDelsBot(
+                      `Analyze tender ${tender.refNumber} (${tender.title}) against our fleet and explain how DEL Services can fulfill this bid.`
+                    )
+                  }
+                  className="flex-1 px-2.5 py-1.5 rounded-xl border border-neutral-800 hover:border-[#df2531] bg-neutral-900/60 hover:bg-[#df2531]/10 text-neutral-300 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Bot size={14} className="text-[#df2531]" />
+                  <Bot size={13} className="text-[#df2531]" />
                   <span>Analyze with Bot</span>
                 </button>
 
-                {/* Compliance Checklist */}
                 <button
                   onClick={() => setActiveChecklistTender(tender)}
-                  className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white text-xs font-bold transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl border border-neutral-800 hover:border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
                 >
-                  <FileText size={14} className="text-emerald-400" />
-                  <span>
-                    Checklist ({tender.checklist.filter((c) => c.status === "completed").length}/{tender.checklist.length})
-                  </span>
+                  Checklist ({tender.checklist.filter((c) => c.status === "completed").length}/{tender.checklist.length})
                 </button>
 
-                {/* Post-Purchase Upload RFP */}
                 <button
                   onClick={() => {
                     setUploadTenderTargetId(tender.id);
-                    setUploadedFileName(`${tender.refNumber.replace(/[^a-zA-Z0-9]/g, "_")}_RFP_Full_Specification.pdf`);
+                    setUploadedFileName(`${tender.refNumber.replace(/[^a-zA-Z0-9]/g, "_")}_RFP_Document.pdf`);
                     setIsUploadModalOpen(true);
                   }}
-                  className="p-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white transition-all shadow-md shadow-[#df2531]/20 cursor-pointer"
-                  title="Upload Purchased RFP Document for RAG analysis"
+                  className="p-2 rounded-xl border border-neutral-800 hover:border-[#df2531] bg-neutral-900/60 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                  title="Upload Purchased RFP Document"
                 >
-                  <Upload size={14} />
+                  <Upload size={13} />
                 </button>
               </div>
             </div>
@@ -655,174 +556,157 @@ export default function TendersPage() {
         })}
       </div>
 
-      {/* Compliance Checklist Modal */}
+      {filteredTenders.length === 0 && (
+        <div className="p-8 text-center rounded-2xl bg-neutral-950 border border-neutral-900 text-neutral-500 text-xs">
+          No open tenders match the selected filters. All expired deadlines have been removed.
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* COMPLIANCE CHECKLIST MODAL                           */}
+      {/* ---------------------------------------------------- */}
       {activeChecklistTender && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-3xl bg-[#09090b] border border-neutral-800 shadow-2xl p-6 text-white space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+          <div className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-3xl bg-[#09090b] border border-neutral-800 shadow-2xl p-5 text-white space-y-3 font-sans">
+            <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
               <div>
-                <h3 className="font-display font-bold text-base text-white flex items-center gap-2">
-                  <FileText size={18} className="text-[#df2531]" />
-                  Tender Compliance Checklist (የጨረታ መስፈርቶች ማረጋገጫ)
+                <h3 className="font-display font-semibold text-sm text-white">
+                  Compliance Checklist • {activeChecklistTender.refNumber}
                 </h3>
-                <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                  Ref: {activeChecklistTender.refNumber} • {activeChecklistTender.issuingOrganization}
+                <p className="text-[11px] text-neutral-400 font-sans">
+                  {activeChecklistTender.issuingOrganization}
                 </p>
               </div>
               <button
                 onClick={() => setActiveChecklistTender(null)}
-                className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
               >
-                <X size={18} />
+                <X size={15} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-2">
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
               {activeChecklistTender.checklist.map((item) => (
                 <div
                   key={item.id}
                   onClick={() => handleToggleChecklistTask(activeChecklistTender.id, item.id, item.status)}
                   className={cn(
-                    "p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
+                    "p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5",
                     item.status === "completed"
                       ? "bg-emerald-950/20 border-emerald-500/40 text-neutral-200"
-                      : "bg-neutral-900/80 border-neutral-800 hover:border-neutral-600 text-neutral-300"
+                      : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-300"
                   )}
                 >
                   <div
                     className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all",
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
                       item.status === "completed"
                         ? "bg-emerald-500 border-emerald-400 text-black"
-                        : "border-neutral-600 bg-neutral-950"
+                        : "border-neutral-600 bg-neutral-900"
                     )}
                   >
-                    {item.status === "completed" && <Check size={13} />}
+                    {item.status === "completed" && <Check size={11} />}
                   </div>
 
-                  <div className="space-y-1 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={cn("text-xs font-bold text-white", item.status === "completed" && "line-through opacity-80")}>
-                        {item.taskEn}
-                      </p>
-                      <span className="text-[10px] font-mono text-neutral-400 shrink-0">
-                        Due: {item.deadline}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-[#df2531] font-medium font-sans">
+                  <div className="space-y-0.5 flex-1">
+                    <p className={cn("text-xs font-medium text-white", item.status === "completed" && "line-through opacity-75")}>
+                      {item.taskEn}
+                    </p>
+                    <p className="text-[11px] text-[#df2531] font-sans">
                       {item.taskAm}
                     </p>
-
-                    {item.notes && (
-                      <p className="text-[10px] text-neutral-400 font-mono pt-1">
-                        ℹ️ {item.notes}
-                      </p>
-                    )}
+                    <span className="text-[10px] text-neutral-500 font-mono block">
+                      Due: {item.deadline}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-neutral-800 text-xs">
-              <span className="text-neutral-400">
-                Completed:{" "}
-                <strong className="text-emerald-400">
-                  {activeChecklistTender.checklist.filter((c) => c.status === "completed").length}
-                </strong>{" "}
-                of {activeChecklistTender.checklist.length}
+            <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-xs">
+              <span className="text-neutral-400 text-[11px]">
+                {activeChecklistTender.checklist.filter((c) => c.status === "completed").length} of {activeChecklistTender.checklist.length} Completed
               </span>
               <button
                 onClick={() => setActiveChecklistTender(null)}
-                className="px-5 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold transition-all cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs cursor-pointer"
               >
-                Done
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Post-Purchase Document Upload Modal (RAG Reader Pipeline) */}
+      {/* ---------------------------------------------------- */}
+      {/* POST-PURCHASE DOCUMENT UPLOAD MODAL (RAG Ingestion)  */}
+      {/* ---------------------------------------------------- */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg rounded-3xl bg-[#09090b] border border-neutral-800 shadow-2xl p-6 text-white space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+          <div className="w-full max-w-md rounded-3xl bg-[#09090b] border border-neutral-800 shadow-2xl p-5 text-white space-y-3 font-sans">
+            <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
               <div>
-                <h3 className="font-display font-bold text-base text-white flex items-center gap-2">
-                  <Upload size={18} className="text-[#df2531]" />
-                  Post-Purchase Document RAG Ingestion
+                <h3 className="font-display font-semibold text-sm text-white">
+                  Post-Purchase Document Ingestion (RAG)
                 </h3>
-                <p className="text-xs text-neutral-400">
-                  Upload purchased RFP PDF / Scanned TOR for Del's Bot AI checklist extraction.
+                <p className="text-[11px] text-neutral-400">
+                  Upload purchased RFP PDF for automated milestone extraction.
                 </p>
               </div>
               <button
                 onClick={() => setIsUploadModalOpen(false)}
-                className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
               >
-                <X size={18} />
+                <X size={15} />
               </button>
             </div>
 
-            <form onSubmit={handleUploadRfpDocument} className="space-y-4 text-xs">
+            <form onSubmit={handleUploadRfpDocument} className="space-y-3 text-xs">
               <div>
-                <label className="text-neutral-400 font-medium block mb-1">RFP / Tender Document File Name</label>
+                <label className="text-neutral-400 text-[11px] block mb-1">RFP / TOR File Name</label>
                 <input
                   type="text"
                   value={uploadedFileName}
                   onChange={(e) => setUploadedFileName(e.target.value)}
-                  placeholder="e.g. ERA_Modjo_Hawassa_Tender_Document_2026.pdf"
+                  placeholder="e.g. ERA_Tender_RFP_Specification.pdf"
                   required
-                  className="w-full bg-neutral-900 border border-neutral-800 focus:border-[#df2531] rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none"
+                  className="w-full bg-neutral-900 border border-neutral-800 focus:border-[#df2531] rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
                 />
               </div>
 
-              {/* Upload Dropzone Preview */}
-              <div className="border-2 border-dashed border-neutral-800 hover:border-[#df2531]/50 rounded-2xl p-6 text-center space-y-2 bg-neutral-950/60 transition-colors">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-900 text-[#df2531]">
-                  <FileText size={20} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Click or drag &amp; drop RFP PDF</p>
-                  <p className="text-[10px] text-neutral-500">PDF, Scanned Contract, or Image up to 50MB</p>
-                </div>
+              <div className="border border-dashed border-neutral-800 rounded-xl p-5 text-center space-y-1 bg-neutral-950">
+                <FileText size={18} className="mx-auto text-neutral-500" />
+                <p className="text-xs text-neutral-300">Click or drag &amp; drop RFP file here</p>
+                <p className="text-[10px] text-neutral-500">PDF or Scanned Document</p>
               </div>
 
               {ragUploadSuccess && (
-                <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs leading-relaxed animate-fadeIn">
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs">
                   ✓ {ragUploadSuccess}
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setIsUploadModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-neutral-900 text-neutral-300 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 text-neutral-300 hover:text-white text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploadingDoc || !uploadedFileName}
-                  className="px-5 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-[#df2531]/25 disabled:opacity-50 transition-all cursor-pointer"
+                  className="px-4 py-1.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
                 >
-                  {uploadingDoc && <RefreshCw size={13} className="animate-spin" />}
-                  <span>{uploadingDoc ? "Running RAG Pipeline..." : "Extract Checklist (Del's Bot)"}</span>
+                  {uploadingDoc && <RefreshCw size={12} className="animate-spin" />}
+                  <span>{uploadingDoc ? "Extracting..." : "Run RAG Extraction"}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Global Del's Bot AI Assistant Modal */}
-      <DelsBotModal
-        isOpen={isBotOpen}
-        onClose={() => setIsBotOpen(false)}
-        initialQuery={botInitialQuery}
-      />
     </div>
   );
 }

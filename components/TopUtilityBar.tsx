@@ -39,7 +39,6 @@ import {
 import { useTenant } from "@/context/TenantContext";
 import { cn } from "@/lib/utils";
 import { INITIAL_ASSETS, INITIAL_OPERATORS, INITIAL_BOOKINGS, INITIAL_BROKERS } from "@/lib/db";
-import { DelsBotModal } from "./DelsBotModal";
 
 export function TopUtilityBar() {
   const router = useRouter();
@@ -63,13 +62,13 @@ export function TopUtilityBar() {
     removeNotification,
     clearAllNotifications,
     toggleMobileSidebar,
+    openDelsBot,
   } = useTenant();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationTab, setNotificationTab] = useState<"pending" | "all">("pending");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isDelsBotOpen, setIsDelsBotOpen] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState<any | null>(null);
   const [docZoom, setDocZoom] = useState(1);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -286,34 +285,22 @@ export function TopUtilityBar() {
 
       {/* Right Controls: Del's Bot AI + Header Settings Menu + Notification + User Profile */}
       <div className="flex items-center gap-2 sm:gap-2.5">
-        {/* Del's Bot AI & Voice Assistant Button (Placed in right corner beside Settings) */}
+        {/* Del's Bot AI & Voice Assistant Button (Compact 32px × 32px Icon-Only with Hover Tooltip) */}
         <button
           onClick={() => {
-            setIsDelsBotOpen(true);
+            openDelsBot();
             setSettingsOpen(false);
             setNotificationsOpen(false);
           }}
-          className="relative px-2.5 sm:px-3 py-1.5 rounded-xl border border-[#df2531]/60 bg-gradient-to-r from-neutral-900 to-black hover:border-[#df2531] text-white transition-all flex items-center gap-1.5 sm:gap-2 shadow-sm shadow-[#df2531]/20 group cursor-pointer"
+          className="h-8 w-8 rounded-xl border border-neutral-300 dark:border-neutral-800 hover:border-[#df2531] bg-neutral-100 dark:bg-[#0a0a0a] hover:bg-[#df2531]/10 text-white transition-all flex items-center justify-center shadow-sm group cursor-pointer"
           title="Del's Bot AI (Voice UI & Role-Scoped ERP Intelligence)"
           aria-label="Open Del's Bot AI"
         >
-          <div className="relative flex h-5 w-5 items-center justify-center">
-            <img
-              src="/del-logo.png"
-              alt="Del's Bot"
-              className="h-4 w-auto object-contain group-hover:scale-110 transition-transform filter drop-shadow-[0_0_6px_rgba(223,37,49,0.7)]"
-            />
-            <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#df2531] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#df2531]"></span>
-            </span>
-          </div>
-          <span className="font-display font-bold text-xs tracking-wide text-white group-hover:text-[#df2531] transition-colors hidden sm:inline">
-            Del's Bot
-          </span>
-          <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-[#df2531]/20 text-[#df2531] border border-[#df2531]/40 font-bold uppercase hidden md:inline">
-            AI Voice
-          </span>
+          <img
+            src="/del-logo.png"
+            alt="Del's Bot"
+            className="h-4.5 w-auto object-contain group-hover:scale-110 transition-transform filter drop-shadow-[0_0_5px_rgba(223,37,49,0.6)]"
+          />
         </button>
 
         {/* Header Settings Menu (Phase 1 vs 2 Mode Switcher, Division, Theme) */}
@@ -848,12 +835,6 @@ export function TopUtilityBar() {
           </div>
         </div>
       )}
-
-      {/* Del's Bot AI Assistant & Multilingual Voice Modal */}
-      <DelsBotModal
-        isOpen={isDelsBotOpen}
-        onClose={() => setIsDelsBotOpen(false)}
-      />
     </header>
   );
 }

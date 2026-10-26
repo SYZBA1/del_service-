@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processDelsBotQuery } from "@/lib/dels-bot-engine";
+import { queryGeminiOrRag, isGeminiConfigured } from "@/lib/gemini";
 import { UserRole } from "@/lib/types";
+import { isAmharicText } from "@/lib/dels-bot-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,8 +9,7 @@ export async function POST(req: NextRequest) {
     const {
       message = "",
       role = "head_dispatcher",
-      language = "en",
-      division = "all",
+      language,
     } = body;
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
@@ -19,16 +19,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = processDelsBotQuery({
-      message,
-      role: role as UserRole,
-      language: language as 'en' | 'am',
-      division,
-    });
+    const detectedLang: 'en' | 'am' = language || (isAmharicText(message) ? 'am' : 'en');
+
+    const result = await queryGeminiOrRag(
+      message.trim(),
+      role as UserRole,
+      detectedLang
+    );
 
     return NextResponse.json({
       success: true,
-      data: response,
+      data: {
+        answer: result.text,
+        language: result.language,
+        isGeminiPowered: result.isGeminiPowered,
+        isGeminiConfigured,
+        roleScopedDivision: result.roleScopedDivision,
+        isRestricted: result.isRestricted,
+      },
     });
   } catch (error: any) {
     return NextResponse.json(
