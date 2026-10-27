@@ -230,6 +230,17 @@ export function DelsBotWidget() {
     }
   };
 
+  const toggleMute = () => {
+    setIsAudioMuted((prev) => {
+      const next = !prev;
+      if (next && typeof window !== "undefined" && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+      return next;
+    });
+  };
+
   // ----------------------------------------------------
   // ROBUST SPEECH RECOGNITION (Error Handled & Auto-Recovered)
   // ----------------------------------------------------
@@ -579,6 +590,21 @@ export function DelsBotWidget() {
             aria-label="Voice Waveform"
           >
             <Activity size={14} />
+          </button>
+
+          {/* Voice Mute / Unmute Audio Toggle (32px × 32px) */}
+          <button
+            onClick={toggleMute}
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer",
+              isAudioMuted
+                ? "bg-[#df2531]/20 text-[#df2531] border border-[#df2531]/40"
+                : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+            )}
+            title={isAudioMuted ? "Unmute Voice Audio (ድምፅ አብራ)" : "Mute Voice Audio (ድምፅ አጥፋ)"}
+            aria-label={isAudioMuted ? "Unmute Voice Audio" : "Mute Voice Audio"}
+          >
+            {isAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
 
           {/* Minimize Window (—) (32px × 32px) */}

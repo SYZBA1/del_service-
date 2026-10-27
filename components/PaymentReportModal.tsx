@@ -388,7 +388,7 @@ export function PaymentReportModal({
                   Enterprise Fleet &amp; Heavy Equipment Logistics Network
                 </div>
                 <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
-                  TIN: 0023456789 • VAT Reg: ET-VAT-902148 • Bole Subcity, Addis Ababa
+                  TIN: 0023456789 • VAT Reg: ET-VAT-902148 • Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia • info@delservices.et • +251 964 727 269 / +251 911 526 965
                 </div>
               </div>
             </div>
@@ -659,7 +659,7 @@ export function PaymentReportModal({
               <div className="mt-8 pt-2 border-t border-neutral-400 dark:border-neutral-700 font-semibold text-neutral-900 dark:text-white">
                 Finance &amp; Disbursements Desk
               </div>
-              <div className="text-[10px] text-neutral-500">DEL Services PLC • Bole Yard Terminal</div>
+              <div className="text-[10px] text-neutral-500">DEL Services PLC • Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia • info@delservices.et</div>
             </div>
           </div>
 

@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
       collateralType,
       contractFileName,
       contractFileSize,
+      contractFileUrl,
+      contractFileType,
     } = body;
 
     if (!title || !message) {
@@ -51,6 +53,8 @@ export async function POST(req: NextRequest) {
       collateralType,
       contractFileName,
       contractFileSize,
+      contractFileUrl,
+      contractFileType: contractFileType || (contractFileName && /\.(png|jpe?g|webp)$/i.test(contractFileName) ? "image" : "pdf"),
     });
 
     // Synchronize notification to Cloud Firestore

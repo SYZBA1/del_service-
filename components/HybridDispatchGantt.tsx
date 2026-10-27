@@ -794,9 +794,9 @@ export function HybridDispatchGantt() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="w-full h-[520px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
+                <div className="w-full h-[550px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
                   <iframe
-                    src={selectedDispatchDoc.attachment.url || "/contracts/guarantor-legal-affidavit.pdf"}
+                    src={selectedDispatchDoc.attachment.url || (selectedDispatchDoc.attachment.name.includes("Franco") ? "/contracts/Scanned-Franco-Valuta.pdf" : "/contracts/guarantor-legal-affidavit.pdf")}
                     className="w-full h-full rounded-xl bg-neutral-900 border-0"
                     title={selectedDispatchDoc.attachment.name}
                   />

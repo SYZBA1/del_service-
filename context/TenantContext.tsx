@@ -501,7 +501,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
       {/* Real-time Interactive Floating KYC & Dispatcher Notification Toast (Brand Color #df2531) - Restricted to Super Admin inside internal ERP */}
       {!isPublicRoute && isSuperAdmin && latestLiveAlert && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-md w-full p-4 rounded-2xl bg-[#0D0E12] dark:bg-[#0A0A0A] border-2 border-[#df2531] shadow-2xl shadow-[#df2531]/40 text-white animate-bounce duration-300">
+        <div className="fixed bottom-6 right-6 z-50 max-w-md w-full p-4 rounded-2xl bg-[#0D0E12] dark:bg-[#0A0A0A] border-2 border-[#df2531] shadow-2xl shadow-[#df2531]/40 text-white animate-fadeIn transition-opacity duration-300">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <span className="p-2 rounded-xl bg-[#df2531] text-white font-black shadow-lg shadow-[#df2531]/40 animate-pulse">

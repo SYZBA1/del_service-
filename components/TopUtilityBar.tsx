@@ -451,7 +451,7 @@ export function TopUtilityBar() {
             <Bell size={17} />
             {pendingNotifications.length > 0 && (
               <>
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#df2531] ring-2 ring-black animate-ping" />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#df2531] ring-2 ring-black" />
                 <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-[#df2531] text-white font-black text-[9px] flex items-center justify-center shadow shadow-[#df2531]/40">
                   {pendingNotifications.length}
                 </span>
@@ -690,151 +690,169 @@ export function TopUtilityBar() {
       </div>
 
       {/* Interactive Document / Contract Attachment Preview Modal */}
-      {viewingAttachment && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn text-neutral-200">
-          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-4">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-              <div className="flex items-center gap-2">
-                {viewingAttachment.contractFileType === "image" || /\.(png|jpe?g|webp)$/i.test(viewingAttachment.contractFileName) ? (
-                  <ImageIcon className="text-[#df2531]" size={20} />
-                ) : (
-                  <FileText className="text-[#df2531]" size={20} />
-                )}
-                <div>
-                  <h3 className="font-bold text-white text-sm font-display">
-                    {viewingAttachment.contractFileName}
-                  </h3>
-                  <p className="text-[10px] text-neutral-400">
-                    Attached Document Archive • {viewingAttachment.contractFileSize || "Verified File"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setViewingAttachment(null)}
-                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      {viewingAttachment && (() => {
+        const isImage =
+          viewingAttachment.contractFileType === "image" ||
+          Boolean(viewingAttachment.contractFileName && /\.(png|jpe?g|webp|gif|svg)$/i.test(viewingAttachment.contractFileName)) ||
+          Boolean(viewingAttachment.contractFileUrl && (
+            viewingAttachment.contractFileUrl.startsWith("data:image/") ||
+            /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(viewingAttachment.contractFileUrl)
+          ));
 
-            {/* Modal Body: Image Preview or Real PDF Viewer */}
-            {viewingAttachment.contractFileType === "image" || /\.(png|jpe?g|webp)$/i.test(viewingAttachment.contractFileName) ? (
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[350px] max-h-[60vh] overflow-hidden relative group">
-                  <img
-                    src={viewingAttachment.contractFileUrl || "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80"}
-                    alt={viewingAttachment.contractFileName}
-                    style={{ transform: `scale(${docZoom})` }}
-                    className="max-h-[55vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60 transition-transform duration-200"
-                  />
+        const resolvedFileUrl =
+          viewingAttachment.contractFileUrl ||
+          (isImage
+            ? "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80"
+            : (viewingAttachment.contractFileName === "Scanned-Franco Valuta.pdf" || viewingAttachment.contractFileName?.includes("Franco")
+              ? "/contracts/Scanned-Franco-Valuta.pdf"
+              : "/contracts/guarantor-legal-affidavit.pdf"));
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn text-neutral-200">
+            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-4">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+                <div className="flex items-center gap-2">
+                  {isImage ? (
+                    <ImageIcon className="text-[#df2531]" size={20} />
+                  ) : (
+                    <FileText className="text-[#df2531]" size={20} />
+                  )}
+                  <div>
+                    <h3 className="font-bold text-white text-sm font-display">
+                      {viewingAttachment.contractFileName}
+                    </h3>
+                    <p className="text-[10px] text-neutral-400">
+                      Attached Document Archive • {viewingAttachment.contractFileSize || "Verified File"}
+                    </p>
+                  </div>
                 </div>
-                <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <ImageIcon size={16} className="text-[#df2531] shrink-0" />
-                    <div>
-                      <div className="text-white font-bold truncate">{viewingAttachment.contractFileName}</div>
-                      <div className="text-[10px] text-neutral-400">Certified Digital Snapshot / Inspection Stamp</div>
+                <button
+                  onClick={() => setViewingAttachment(null)}
+                  className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Modal Body: Actual Image Preview or Embedded PDF Reader */}
+              {isImage ? (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center min-h-[350px] max-h-[60vh] overflow-hidden relative group">
+                    <img
+                      src={resolvedFileUrl}
+                      alt={viewingAttachment.contractFileName}
+                      style={{ transform: `scale(${docZoom})` }}
+                      className="max-h-[55vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-neutral-700/60 transition-transform duration-200"
+                    />
+                  </div>
+                  <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <ImageIcon size={16} className="text-[#df2531] shrink-0" />
+                      <div>
+                        <div className="text-white font-bold truncate">{viewingAttachment.contractFileName}</div>
+                        <div className="text-[10px] text-neutral-400">Certified Digital Snapshot / Inspection Stamp</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1 bg-black p-1 rounded-lg border border-neutral-800">
+                        <button
+                          type="button"
+                          onClick={() => setDocZoom((z) => Math.max(0.5, z - 0.25))}
+                          className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                          title="Zoom out"
+                        >
+                          <ZoomOut size={13} />
+                        </button>
+                        <span className="px-1 text-[10px] font-mono font-bold text-neutral-300">{Math.round(docZoom * 100)}%</span>
+                        <button
+                          type="button"
+                          onClick={() => setDocZoom((z) => Math.min(2.5, z + 0.25))}
+                          className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
+                          title="Zoom in"
+                        >
+                          <ZoomIn size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDocZoom(1)}
+                          className="p-1 rounded hover:bg-neutral-800 text-neutral-300 text-[10px]"
+                          title="Reset zoom"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <a
+                        href={resolvedFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={viewingAttachment.contractFileName}
+                        className="px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
+                      >
+                        <Download size={13} /> Download
+                      </a>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center gap-1 bg-black p-1 rounded-lg border border-neutral-800">
-                      <button
-                        type="button"
-                        onClick={() => setDocZoom((z) => Math.max(0.5, z - 0.25))}
-                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
-                        title="Zoom out"
-                      >
-                        <ZoomOut size={13} />
-                      </button>
-                      <span className="px-1 text-[10px] font-mono font-bold text-neutral-300">{Math.round(docZoom * 100)}%</span>
-                      <button
-                        type="button"
-                        onClick={() => setDocZoom((z) => Math.min(2.5, z + 0.25))}
-                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300"
-                        title="Zoom in"
-                      >
-                        <ZoomIn size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDocZoom(1)}
-                        className="p-1 rounded hover:bg-neutral-800 text-neutral-300 text-[10px]"
-                        title="Reset zoom"
-                      >
-                        Reset
-                      </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="w-full h-[550px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
+                    <iframe
+                      src={resolvedFileUrl}
+                      className="w-full h-full rounded-xl bg-neutral-900 border-0"
+                      title={viewingAttachment.contractFileName}
+                    />
+                  </div>
+                  <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs font-mono">
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <FileText size={16} className="text-[#df2531] shrink-0" />
+                      <div>
+                        <div className="font-bold text-white truncate">{viewingAttachment.contractFileName}</div>
+                        <div className="text-[10px] text-neutral-400">
+                          {viewingAttachment.renterName ? `Lessee: ${viewingAttachment.renterName} • ` : ""}
+                          {viewingAttachment.assetName ? `Asset: ${viewingAttachment.assetName}` : ""}
+                        </div>
+                      </div>
                     </div>
                     <a
-                      href={viewingAttachment.contractFileUrl || "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80"}
+                      href={resolvedFileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       download={viewingAttachment.contractFileName}
-                      className="px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
+                      className="shrink-0 px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
                     >
-                      <Download size={13} /> Download
+                      <Download size={13} /> Download / Open Original File
                     </a>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="w-full h-[520px] rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 flex items-center justify-center relative">
-                  <iframe
-                    src={viewingAttachment.contractFileUrl || "/contracts/guarantor-legal-affidavit.pdf"}
-                    className="w-full h-full rounded-xl bg-neutral-900 border-0"
-                    title={viewingAttachment.contractFileName}
-                  />
-                </div>
-                <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs font-mono">
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <FileText size={16} className="text-[#df2531] shrink-0" />
-                    <div>
-                      <div className="font-bold text-white truncate">{viewingAttachment.contractFileName}</div>
-                      <div className="text-[10px] text-neutral-400">
-                        {viewingAttachment.renterName ? `Lessee: ${viewingAttachment.renterName} • ` : ""}
-                        {viewingAttachment.assetName ? `Asset: ${viewingAttachment.assetName}` : ""}
-                      </div>
-                    </div>
-                  </div>
-                  <a
-                    href={viewingAttachment.contractFileUrl || "/contracts/guarantor-legal-affidavit.pdf"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download={viewingAttachment.contractFileName}
-                    className="shrink-0 px-3.5 py-1.5 rounded-lg bg-[#df2531] hover:bg-[#c41e29] text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-sans transition-all cursor-pointer"
-                  >
-                    <Download size={13} /> Download / Open Original File
-                  </a>
-                </div>
-              </div>
-            )}
+              )}
 
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between pt-2">
-              <div>
-                {viewingAttachment.status === "pending" && viewingAttachment.type === "kyc_validation" && (
-                  <button
-                    onClick={async () => {
-                      await approveNotification(viewingAttachment.id);
-                      setViewingAttachment(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-display cursor-pointer"
-                  >
-                    <Check size={14} /> Approve & Sign KYC
-                  </button>
-                )}
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between pt-2">
+                <div>
+                  {viewingAttachment.status === "pending" && viewingAttachment.type === "kyc_validation" && (
+                    <button
+                      onClick={async () => {
+                        await approveNotification(viewingAttachment.id);
+                        setViewingAttachment(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-[#df2531]/30 font-display cursor-pointer"
+                    >
+                      <Check size={14} /> Approve & Sign KYC
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setViewingAttachment(null)}
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs transition-colors font-display cursor-pointer"
+                >
+                  Close Document
+                </button>
               </div>
-              <button
-                onClick={() => setViewingAttachment(null)}
-                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs transition-colors font-display cursor-pointer"
-              >
-                Close Document
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </header>
   );
 }

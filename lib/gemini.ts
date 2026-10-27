@@ -1,35 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { INITIAL_ASSETS, INITIAL_OPERATORS, INITIAL_BOOKINGS } from "./db";
+import { db, INITIAL_ASSETS, INITIAL_OPERATORS, INITIAL_BOOKINGS } from "./db";
 import { INITIAL_TENDERS } from "./tenders-data";
 import { UserRole } from "./types";
 import { processDelsBotQuery, isAmharicText } from "./dels-bot-engine";
 
-const apiKey =
-  process.env.GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-  "";
+export function getGeminiApiKey(): string {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    ""
+  ).trim();
+}
 
-export const isGeminiConfigured = Boolean(apiKey && apiKey.trim().length > 0);
+export const isGeminiConfigured = Boolean(getGeminiApiKey().length > 0);
 
-let genAI: GoogleGenerativeAI | null = null;
-if (isGeminiConfigured) {
+function getGenAI(): GoogleGenerativeAI | null {
+  const key = getGeminiApiKey();
+  if (!key) return null;
   try {
-    genAI = new GoogleGenerativeAI(apiKey.trim());
+    return new GoogleGenerativeAI(key);
   } catch (err) {
-    console.warn("GoogleGenerativeAI initialization warning:", err);
+    console.warn("GoogleGenerativeAI init error:", err);
+    return null;
   }
 }
 
 /**
- * Builds the comprehensive role-scoped system context for Gemini
+ * Builds the comprehensive role-scoped system context for Gemini using LIVE platform metrics
  */
 function buildSystemPrompt(role: UserRole, detectedLanguage: 'en' | 'am'): string {
-  const isElshaday = role === "elshaday_admin";
-  const isLiora = role === "liora_admin";
-  const isDalol = role === "dalol_admin";
-  const isSuper = role === "head_dispatcher" || role === "super_admin";
+  const assets = db.assets && db.assets.length > 0 ? db.assets : INITIAL_ASSETS;
+  const operators = db.getOperators ? db.getOperators() : INITIAL_OPERATORS;
+  const bookings = db.bookings && db.bookings.length > 0 ? db.bookings : INITIAL_BOOKINGS;
+
+  const passengerCars = assets.filter((a) => a.category === 'passenger_car');
+  const suvs4x4 = assets.filter((a) => a.category === 'suv_4x4' || a.category === 'commercial_van');
+  const heavyMachinery = assets.filter((a) => a.category === 'heavy_machinery');
+  const activeDispatches = bookings.filter((b) => b.status === 'dispatched' || b.status === 'confirmed');
 
   return `You are "Del's Bot", an elite, bilingual AI ERP intelligence assistant for DEL Services (Enterprise Vehicle Fleet & Heavy Construction Machinery Rental platform in Ethiopia).
+Headquarters: Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia.
+Email: info@delservices.et | Phone: +251 964 727 269 / +251 911 526 965.
 
 CRITICAL RBAC ROLE RESTRICTIONS:
 The currently logged-in user has the role: "${role}".
@@ -44,20 +55,24 @@ The currently logged-in user has the role: "${role}".
 4. If the role is "head_dispatcher" or "super_admin":
    - You have UNRESTRICTED HOLISTIC ACCESS across all divisions (Elshaday, Liora, Dalol), full fleet metrics, tender feeds from 2merkato.com and EGP, and double-booking GiST protections.
 
-LANGUAGE & VOICE RULES:
-- Detect the user's language.
+DYNAMIC RESPONSE MANDATE:
+- Do NOT provide generic canned or hardcoded responses.
+- Dynamically synthesize every response directly answering the user's exact query using the live fleet statistics and parameters below.
 - If the user speaks or writes in Amharic, YOU MUST RESPOND FLUENTLY IN AMHARIC (አማርኛ).
 - If the user speaks or writes in English, YOU MUST RESPOND IN ENGLISH.
-- Keep responses concise, authoritative, and formatted cleanly with bullet points and bold headers.
+- Keep responses concise, authoritative, structured with bullet points and bold highlights.
 
 CURRENT ERP REAL-TIME DATA SNAPSHOT:
-- Passenger Cars: ${INITIAL_ASSETS.filter((a) => a.category === 'passenger_car').length} units (Toyota Corolla Cross Hybrid @ 6,000-8,500 ETB/day)
-- 4x4 SUVs & Site Pickups: ${INITIAL_ASSETS.filter((a) => a.category === 'suv_4x4' || a.category === 'commercial_van').length} units (Hilux GD-6, Fortuner, Land Cruiser @ 11,500-18,000 ETB/day)
-- Heavy Machinery: ${INITIAL_ASSETS.filter((a) => a.category === 'heavy_machinery').length} units (CAT 320D, Komatsu D65, SANY Graders, Sinotruk @ 35,000-55,000 ETB/day, 8 engine hours included)
-- Certified Operators & Drivers: ${INITIAL_OPERATORS.length} certified personnel across Ethiopia
+- Total Fleet: ${assets.length} registered units
+- Passenger Cars: ${passengerCars.length} units (Toyota Corolla Cross Hybrid @ 6,000-8,500 ETB/day)
+- 4x4 SUVs & Site Pickups: ${suvs4x4.length} units (Hilux GD-6, Fortuner, Land Cruiser @ 11,500-18,000 ETB/day)
+- Heavy Machinery: ${heavyMachinery.length} units (CAT 320D, Komatsu D65, SANY Graders, Sinotruk @ 35,000-55,000 ETB/day, 8 engine hours included)
+- Certified Operators & Drivers: ${operators.length} certified personnel across Ethiopia
+- Active Dispatches on Corridor: ${activeDispatches.length} missions active
 - Active Tenders (2merkato & EGP): ${INITIAL_TENDERS.length} open tenders (ERA Heavy Equipment @ 96% match, Ethio Telecom 4WD Towers @ 94% match, CBE Executive Hybrid @ 92% match).
-- Company Currency: Ethiopian Birr (ETB).
+- Official Currency: Ethiopian Birr (ETB).
 `;
+
 }
 
 /**
@@ -76,10 +91,11 @@ export async function queryGeminiOrRag(
 }> {
   const detectedLang: 'en' | 'am' = forcedLanguage || (isAmharicText(userQuery) ? 'am' : 'en');
 
+  const ai = getGenAI();
   // If Gemini API is configured and client initialized, use Gemini
-  if (isGeminiConfigured && genAI) {
+  if (ai) {
     try {
-      const model = genAI.getGenerativeModel({
+      const model = ai.getGenerativeModel({
         model: "gemini-1.5-flash",
         systemInstruction: buildSystemPrompt(role, detectedLang),
       });

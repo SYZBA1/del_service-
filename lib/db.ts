@@ -496,7 +496,7 @@ export const INITIAL_ASSETS: Asset[] = [
       lat: 9.0105,
       lng: 38.7615,
       speed: 0,
-      address: "Bole Medhanialem Central Depot, Addis Ababa",
+      address: "Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia",
       status: "idle",
       lastUpdated: "5 mins ago",
     },

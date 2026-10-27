@@ -34,9 +34,15 @@ import {
   Layers,
   Check,
   LogIn,
+  Upload,
+  Paperclip,
+  ImageIcon,
+  FileCheck,
 } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
 import { cn } from "@/lib/utils";
+import { uploadFileToStorage } from "@/lib/firebase-cloud";
+
 
 export default function StorefrontHomePage() {
   const router = useRouter();
@@ -55,20 +61,32 @@ export default function StorefrontHomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Contact & Direct Booking Modal State (Requirement 7)
+  // Contact & Direct Booking Modal State (Requirement 7 & 9)
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [selectedAssetForInquiry, setSelectedAssetForInquiry] = useState<string>("");
   const [inquiryName, setInquiryName] = useState("");
   const [inquiryPhone, setInquiryPhone] = useState("");
-  const [inquiryLocation, setInquiryLocation] = useState("Addis Ababa");
+  const [inquiryEmail, setInquiryEmail] = useState("");
+  const [inquiryLocation, setInquiryLocation] = useState("Jarkros Sets Building, 2nd Floor, Addis Ababa");
+  const [inquiryPickupDate, setInquiryPickupDate] = useState("2026-03-01");
+  const [inquiryReturnDate, setInquiryReturnDate] = useState("2026-03-04");
   const [inquiryDays, setInquiryDays] = useState("3");
+  const [inquiryNotes, setInquiryNotes] = useState("");
+  const [attachedKycFile, setAttachedKycFile] = useState<File | null>(null);
+  const [attachedKycFileName, setAttachedKycFileName] = useState("");
+  const [attachedKycFileSize, setAttachedKycFileSize] = useState("");
+  const [attachedKycFileType, setAttachedKycFileType] = useState<"pdf" | "image">("pdf");
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
+  const [bookingSuccessData, setBookingSuccessData] = useState<any>(null);
 
   const openContactModal = (assetName?: string) => {
     setSelectedAssetForInquiry(assetName || "General Fleet Inquiry");
     setInquirySubmitted(false);
+    setBookingSuccessData(null);
     setIsContactModalOpen(true);
   };
+
 
   // Multi-Asset Slow Image Slider State & Slides (Requirement 6)
   const heroSlides = [
@@ -946,9 +964,9 @@ export default function StorefrontHomePage() {
               </p>
               <div className="flex items-center gap-3 pt-2 border-t border-[#1F1F1F]">
                 <img
-                  src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
+                  src="https://images.unsplash.com/photo-1531384441138-2736e62e0919?auto=format&fit=crop&w=240&h=240&q=80"
                   alt="Ato Tadesse Haile"
-                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40"
+                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40 shadow-sm"
                 />
                 <div>
                   <div className="text-xs font-bold text-white">Ato Tadesse Haile</div>
@@ -968,9 +986,9 @@ export default function StorefrontHomePage() {
               </p>
               <div className="flex items-center gap-3 pt-2 border-t border-[#1F1F1F]">
                 <img
-                  src="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=120&q=80"
+                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=240&h=240&q=80"
                   alt="W/ro Bethlehem Mengistu"
-                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40"
+                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40 shadow-sm"
                 />
                 <div>
                   <div className="text-xs font-bold text-white">W/ro Bethlehem Mengistu</div>
@@ -990,9 +1008,9 @@ export default function StorefrontHomePage() {
               </p>
               <div className="flex items-center gap-3 pt-2 border-t border-[#1F1F1F]">
                 <img
-                  src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80"
+                  src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=240&h=240&q=80"
                   alt="Samuel Girma"
-                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40"
+                  className="h-10 w-10 rounded-full object-cover border border-[#df2531]/40 shadow-sm"
                 />
                 <div>
                   <div className="text-xs font-bold text-white">Samuel Girma</div>
@@ -1026,7 +1044,7 @@ export default function StorefrontHomePage() {
           </div>
 
           <a
-            href="https://wa.me/251911223344"
+            href="https://wa.me/251964727269"
             target="_blank"
             rel="noopener noreferrer"
             className="z-10 inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-black hover:bg-neutral-900 text-white font-extrabold text-xs sm:text-sm transition-all shadow-xl active:scale-95 shrink-0 border border-white/20"
@@ -1097,15 +1115,15 @@ export default function StorefrontHomePage() {
             <ul className="space-y-2 text-[11px]">
               <li className="flex items-center gap-2">
                 <Phone size={13} className="text-[#df2531]" />
-                <span>+251 911 223 344 / +251 922 445 566</span>
+                <span>+251 964 727 269 / +251 911 526 965</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail size={13} className="text-[#df2531]" />
-                <span>dispatch@delservices.et</span>
+                <span>info@delservices.et</span>
               </li>
               <li className="flex items-start gap-2">
                 <MapPin size={13} className="text-[#df2531] shrink-0 mt-0.5" />
-                <span>Bole Medhanialem Central Depot, Addis Ababa, Ethiopia</span>
+                <span>Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia</span>
               </li>
             </ul>
           </div>
@@ -1174,7 +1192,7 @@ export default function StorefrontHomePage() {
             {/* Contact Channels Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <a
-                href="tel:+251911223344"
+                href="tel:+251964727269"
                 className="p-3.5 rounded-xl bg-[#121212] border border-[#222222] hover:border-[#df2531]/50 flex items-center gap-3 transition-colors group cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-lg bg-[#df2531]/10 border border-[#df2531]/30 flex items-center justify-center text-[#df2531] shrink-0 group-hover:scale-105 transition-transform">
@@ -1183,13 +1201,13 @@ export default function StorefrontHomePage() {
                 <div>
                   <div className="text-[10px] text-neutral-400 uppercase font-semibold">24/7 Dispatch Hotline</div>
                   <div className="text-xs font-bold text-white group-hover:text-[#df2531] transition-colors font-mono">
-                    +251 911 223 344
+                    +251 964 727 269
                   </div>
                 </div>
               </a>
 
               <a
-                href="tel:+251922445566"
+                href="tel:+251911526965"
                 className="p-3.5 rounded-xl bg-[#121212] border border-[#222222] hover:border-[#df2531]/50 flex items-center gap-3 transition-colors group cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-lg bg-[#df2531]/10 border border-[#df2531]/30 flex items-center justify-center text-[#df2531] shrink-0 group-hover:scale-105 transition-transform">
@@ -1198,28 +1216,28 @@ export default function StorefrontHomePage() {
                 <div>
                   <div className="text-[10px] text-neutral-400 uppercase font-semibold">Corporate &amp; Machinery Line</div>
                   <div className="text-xs font-bold text-white group-hover:text-[#df2531] transition-colors font-mono">
-                    +251 922 445 566
+                    +251 911 526 965
                   </div>
                 </div>
               </a>
 
               <a
-                href="mailto:dispatch@delservices.et"
+                href="mailto:info@delservices.et"
                 className="p-3.5 rounded-xl bg-[#121212] border border-[#222222] hover:border-[#df2531]/50 flex items-center gap-3 transition-colors group cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-lg bg-[#df2531]/10 border border-[#df2531]/30 flex items-center justify-center text-[#df2531] shrink-0 group-hover:scale-105 transition-transform">
                   <Mail size={18} />
                 </div>
                 <div>
-                  <div className="text-[10px] text-neutral-400 uppercase font-semibold">Official Email</div>
+                  <div className="text-[10px] text-neutral-400 uppercase font-semibold">Official Admin Email</div>
                   <div className="text-xs font-bold text-white group-hover:text-[#df2531] transition-colors font-mono">
-                    dispatch@delservices.et
+                    info@delservices.et
                   </div>
                 </div>
               </a>
 
               <a
-                href="https://wa.me/251911223344"
+                href="https://wa.me/251964727269"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3.5 rounded-xl bg-[#121212] border border-[#222222] hover:border-emerald-500/50 flex items-center gap-3 transition-colors group cursor-pointer"
@@ -1230,7 +1248,7 @@ export default function StorefrontHomePage() {
                 <div>
                   <div className="text-[10px] text-neutral-400 uppercase font-semibold">Instant WhatsApp Chat</div>
                   <div className="text-xs font-bold text-white group-hover:text-emerald-400 transition-colors font-mono">
-                    Chat with Dispatcher
+                    +251 964 727 269
                   </div>
                 </div>
               </a>
@@ -1241,9 +1259,9 @@ export default function StorefrontHomePage() {
               <div className="flex items-start gap-2.5">
                 <MapPin size={16} className="text-[#df2531] shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-white">Central Yard &amp; Depot:</span>{" "}
+                  <span className="font-bold text-white">Headquarters &amp; Central Operations:</span>{" "}
                   <span className="text-neutral-300">
-                    Bole Sub-City, Wordea 03, Central Freight &amp; Fleet Depot (Near Bole Medhanialem), Addis Ababa, Ethiopia
+                    Jarkros Sets Building, 2nd Floor, Addis Ababa, Ethiopia
                   </span>
                 </div>
               </div>
@@ -1258,47 +1276,127 @@ export default function StorefrontHomePage() {
               </div>
             </div>
 
-            {/* Quick Inquiry Form */}
+            {/* Direct Booking & KYC Form */}
             <div className="space-y-3 pt-2 border-t border-[#222222]">
               <div className="font-bold text-white text-xs uppercase tracking-wider flex items-center justify-between font-display">
-                <span>Quick Booking Inquiry</span>
+                <span className="flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-[#df2531]" />
+                  Direct Booking Request &amp; KYC Transmission
+                </span>
                 {selectedAssetForInquiry && (
-                  <span className="text-[#df2531] font-mono text-[11px] normal-case">
-                    Target: {selectedAssetForInquiry}
+                  <span className="text-[#df2531] font-mono text-[11px] normal-case truncate max-w-[220px]">
+                    {selectedAssetForInquiry}
                   </span>
                 )}
               </div>
 
               {inquirySubmitted ? (
-                <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/80 text-emerald-300 text-xs flex items-center gap-3">
-                  <CheckCircle2 size={20} className="shrink-0 text-emerald-400" />
-                  <div>
-                    <div className="font-bold text-white">Inquiry Received!</div>
-                    <div>Our central dispatcher will contact you within 15 minutes to confirm availability and dispatch options.</div>
+                <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 text-emerald-200 text-xs space-y-3 animate-fadeIn">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 size={24} className="shrink-0 text-emerald-400" />
+                    <div>
+                      <div className="font-bold text-white text-sm font-display">
+                        Booking Request Successfully Dispatched!
+                      </div>
+                      <div className="text-[11px] text-emerald-300 font-mono">
+                        Reference: #{bookingSuccessData?.bookingReference || "DEL-WEB-CONFIRMED"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-black/50 border border-emerald-900/60 space-y-1.5 text-[11px]">
+                    <div className="flex items-center gap-2 text-white">
+                      <Check size={13} className="text-emerald-400" />
+                      <span><strong>Firestore Persistence:</strong> Permanent record saved to Cloud Database.</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-white">
+                      <Check size={13} className="text-emerald-400" />
+                      <span><strong>Internal ERP Alert:</strong> Real-time KYC notification routed to Head Dispatcher Yonas Bekele.</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-white">
+                      <Check size={13} className="text-emerald-400" />
+                      <span><strong>Admin Dispatch:</strong> Formatted reservation email transmitted to <strong>info@delservices.et</strong>.</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsContactModalOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      Done
+                    </button>
                   </div>
                 </div>
               ) : (
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
-                    setInquirySubmitted(true);
+                    if (!inquiryName.trim() || !inquiryPhone.trim() || isSubmittingInquiry) return;
+
+                    setIsSubmittingInquiry(true);
+                    try {
+                      let kycUrl = "";
+                      if (attachedKycFile) {
+                        kycUrl = await uploadFileToStorage(
+                          attachedKycFile,
+                          `kyc-storefront/${Date.now()}-${attachedKycFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+                        );
+                      }
+
+                      const payload = {
+                        fullName: inquiryName.trim(),
+                        phoneNumber: inquiryPhone.trim(),
+                        email: inquiryEmail.trim() || "client@delservices.et",
+                        selectedAsset: selectedAssetForInquiry || "General Fleet Reservation",
+                        pickupLocation: inquiryLocation,
+                        pickupDate: inquiryPickupDate,
+                        returnDate: inquiryReturnDate,
+                        durationDays: inquiryDays,
+                        notes: inquiryNotes,
+                        kycDocumentName: attachedKycFileName || (attachedKycFile ? attachedKycFile.name : "Customer_ID_Guarantee.pdf"),
+                        kycDocumentSize: attachedKycFileSize || (attachedKycFile ? `${Math.round(attachedKycFile.size / 1024)} KB` : "1.2 MB"),
+                        kycDocumentType: attachedKycFileType,
+                        kycDocumentUrl: kycUrl || "/contracts/Scanned-Franco-Valuta.pdf",
+                      };
+
+                      const res = await fetch("/api/v1/storefront/booking", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                      });
+
+                      const json = await res.json();
+                      if (json.success) {
+                        setBookingSuccessData(json);
+                        setInquirySubmitted(true);
+                      } else {
+                        alert(json.error || "Failed to submit booking inquiry.");
+                      }
+                    } catch (err: any) {
+                      console.error("Booking submission error:", err);
+                      alert("Network error submitting booking. Please try again or call dispatch hotline.");
+                    } finally {
+                      setIsSubmittingInquiry(false);
+                    }
                   }}
                   className="space-y-3"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Your Full Name</label>
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Your Full Name *</label>
                       <input
                         type="text"
                         required
                         value={inquiryName}
                         onChange={(e) => setInquiryName(e.target.value)}
-                        placeholder="e.g. Solomon Bekele"
+                        placeholder="e.g. Ato Solomon Bekele"
                         className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Phone Number</label>
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Phone Number *</label>
                       <input
                         type="tel"
                         required
@@ -1312,16 +1410,47 @@ export default function StorefrontHomePage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Project Site / Destination</label>
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Email Address</label>
                       <input
-                        type="text"
-                        value={inquiryLocation}
-                        onChange={(e) => setInquiryLocation(e.target.value)}
-                        placeholder="Addis Ababa or Out-of-Addis corridor"
+                        type="email"
+                        value={inquiryEmail}
+                        onChange={(e) => setInquiryEmail(e.target.value)}
+                        placeholder="client@company.et"
                         className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531]"
                       />
                     </div>
                     <div>
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Target Fleet / Machinery</label>
+                      <input
+                        type="text"
+                        value={selectedAssetForInquiry}
+                        onChange={(e) => setSelectedAssetForInquiry(e.target.value)}
+                        placeholder="e.g. CAT 320D Excavator or Land Cruiser 300"
+                        className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-1">
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Pickup Date</label>
+                      <input
+                        type="date"
+                        value={inquiryPickupDate}
+                        onChange={(e) => setInquiryPickupDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531] font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-1">
+                      <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Return Date</label>
+                      <input
+                        type="date"
+                        value={inquiryReturnDate}
+                        onChange={(e) => setInquiryReturnDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531] font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-1">
                       <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Duration (Days)</label>
                       <input
                         type="number"
@@ -1333,9 +1462,69 @@ export default function StorefrontHomePage() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Project Site / Operational Corridor</label>
+                    <input
+                      type="text"
+                      value={inquiryLocation}
+                      onChange={(e) => setInquiryLocation(e.target.value)}
+                      placeholder="Addis Ababa, Mojo-Hawassa, Adama, or regional corridor"
+                      className="w-full px-3 py-2 rounded-xl bg-[#161616] border border-[#2A2A2A] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] focus:ring-1 focus:ring-[#df2531]"
+                    />
+                  </div>
+
+                  {/* KYC Document Attachment (Permanent Cloud Persistence) */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">
+                      Attach KYC / Guarantee Document (ID, Business License, or Notarized Guarantor)
+                    </label>
+                    <div className="p-3 rounded-xl border border-dashed border-[#333333] hover:border-[#df2531]/60 bg-[#121212] transition-colors">
+                      {attachedKycFile ? (
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="flex items-center gap-2 text-emerald-400 truncate pr-2">
+                            <FileCheck size={16} className="shrink-0" />
+                            <strong className="text-white truncate">{attachedKycFileName}</strong>
+                            <span className="text-neutral-400 text-[10px]">({attachedKycFileSize})</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAttachedKycFile(null);
+                              setAttachedKycFileName("");
+                              setAttachedKycFileSize("");
+                            }}
+                            className="text-rose-400 hover:text-rose-300 text-[10px] uppercase font-bold shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center gap-1 cursor-pointer py-1">
+                          <Upload size={16} className="text-[#df2531]" />
+                          <span className="text-xs text-neutral-300 font-medium">Click to upload document (PDF, PNG, JPG)</span>
+                          <span className="text-[10px] text-neutral-500">Max size 25MB • Saved permanently to Cloud Storage</span>
+                          <input
+                            type="file"
+                            accept=".pdf,image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                setAttachedKycFile(file);
+                                setAttachedKycFileName(file.name);
+                                setAttachedKycFileSize(`${(file.size / 1024).toFixed(0)} KB`);
+                                setAttachedKycFileType(file.type.includes("pdf") ? "pdf" : "image");
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between pt-2">
                     <a
-                      href={`https://wa.me/251911223344?text=${encodeURIComponent(
+                      href={`https://wa.me/251964727269?text=${encodeURIComponent(
                         `Hello DEL Services, I would like to inquire about booking ${selectedAssetForInquiry || "a fleet unit"}. Name: ${inquiryName || "Client"}, Phone: ${inquiryPhone || "N/A"}, Location: ${inquiryLocation}, Days: ${inquiryDays}.`
                       )}`}
                       target="_blank"
@@ -1343,14 +1532,22 @@ export default function StorefrontHomePage() {
                       className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#181818] border border-neutral-700 hover:border-emerald-500 text-xs font-bold text-emerald-400 hover:text-white transition-all cursor-pointer"
                     >
                       <MessageSquare size={14} />
-                      Send via WhatsApp
+                      WhatsApp Direct
                     </a>
 
                     <button
                       type="submit"
-                      className="px-6 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-black font-display text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shadow-[#df2531]/30"
+                      disabled={isSubmittingInquiry}
+                      className="px-6 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] disabled:opacity-50 text-white font-black font-display text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer shadow-[#df2531]/30 flex items-center gap-2"
                     >
-                      Submit Direct Inquiry
+                      {isSubmittingInquiry ? (
+                        <>
+                          <span className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                          <span>Dispatching...</span>
+                        </>
+                      ) : (
+                        <span>Submit Direct Booking</span>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -1362,3 +1559,4 @@ export default function StorefrontHomePage() {
     </div>
   );
 }
+

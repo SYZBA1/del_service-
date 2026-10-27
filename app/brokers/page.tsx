@@ -838,7 +838,7 @@ export default function BrokersDirectoryPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Bole Medhanialem, Floor 4, Suite 402, Addis Ababa"
+                  placeholder="e.g. Jarkros Sets Building, 2nd Floor, Addis Ababa"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531]"
