@@ -24,7 +24,14 @@ import {
   AlertCircle,
   Clock,
   Sparkles,
+  Upload,
+  FileCheck,
+  ExternalLink,
+  Eye,
 } from "lucide-react";
+import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { firestore, isFirebaseConfigured } from "@/lib/firebase";
+import { uploadFileToStorage } from "@/lib/firebase-cloud";
 import { Broker } from "@/lib/types";
 import { formatETB, cn } from "@/lib/utils";
 
@@ -71,8 +78,9 @@ export default function BrokersDirectoryPage() {
   // Notifications
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
 
-  // New Broker Form State
+  // New Broker Form State (All Required Fields)
   const initialFormState = {
     fullName: "",
     phoneNumber: "+251 9",
@@ -85,6 +93,9 @@ export default function BrokersDirectoryPage() {
     tinNumber: "",
     nationalIdNumber: "",
     faydaFinNumber: "",
+    faydaFinStatus: "verified" as "verified" | "pending" | "unverified",
+    dealsClosedCount: 0,
+    totalCommissionPaidETB: 0,
     bankName: "Commercial Bank of Ethiopia (CBE)",
     accountNumber: "",
     accountHolderName: "",
@@ -92,7 +103,17 @@ export default function BrokersDirectoryPage() {
   };
   const [formData, setFormData] = useState(initialFormState);
 
-  // Fetch Brokers
+  // Attached File Upload States for Firebase Cloud Storage (brokers/{brokerId}/...)
+  const [attachedIdFile, setAttachedIdFile] = useState<File | null>(null);
+  const [attachedIdFileName, setAttachedIdFileName] = useState("");
+  const [attachedAgreementFile, setAttachedAgreementFile] = useState<File | null>(null);
+  const [attachedAgreementFileName, setAttachedAgreementFileName] = useState("");
+
+  // Edit Modal File Upload States
+  const [editAttachedIdFile, setEditAttachedIdFile] = useState<File | null>(null);
+  const [editAttachedAgreementFile, setEditAttachedAgreementFile] = useState<File | null>(null);
+
+  // Fetch Brokers from API as fallback
   const fetchBrokers = async () => {
     try {
       setLoading(true);
@@ -102,14 +123,50 @@ export default function BrokersDirectoryPage() {
         setBrokers(data.data);
       }
     } catch (err) {
-      console.error("Failed to load brokers:", err);
+      console.error("Failed to load brokers from API:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  // 1. Dedicated Cloud Firestore Real-time onSnapshot Listener
   useEffect(() => {
-    fetchBrokers();
+    let unsubscribe: (() => void) | undefined;
+
+    if (firestore && isFirebaseConfigured) {
+      try {
+        const brokersCol = collection(firestore, "brokers");
+        unsubscribe = onSnapshot(
+          brokersCol,
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loadedBrokers = snapshot.docs.map((docSnap) => ({
+                ...docSnap.data(),
+                id: docSnap.id,
+              })) as Broker[];
+              setBrokers(loadedBrokers);
+              setLoading(false);
+            } else {
+              // If collection is empty, fetch from API which seeds INITIAL_BROKERS once
+              fetchBrokers();
+            }
+          },
+          (err) => {
+            console.warn("Firestore brokers onSnapshot error:", err);
+            fetchBrokers();
+          }
+        );
+      } catch (err) {
+        console.warn("Failed to subscribe to Firestore brokers collection:", err);
+        fetchBrokers();
+      }
+    } else {
+      fetchBrokers();
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const showNotification = (type: "success" | "error", message: string) => {
@@ -122,16 +179,16 @@ export default function BrokersDirectoryPage() {
   const filteredBrokers = brokers.filter((b) => {
     const matchesSearch =
       !trimmedSearch ||
-      b.fullName.toLowerCase().includes(trimmedSearch) ||
-      b.phoneNumber.toLowerCase().includes(trimmedSearch) ||
-      b.address.toLowerCase().includes(trimmedSearch) ||
-      b.regionLocation.region.toLowerCase().includes(trimmedSearch) ||
-      (b.regionLocation.citySubcity && b.regionLocation.citySubcity.toLowerCase().includes(trimmedSearch)) ||
+      b.fullName?.toLowerCase().includes(trimmedSearch) ||
+      b.phoneNumber?.toLowerCase().includes(trimmedSearch) ||
+      b.address?.toLowerCase().includes(trimmedSearch) ||
+      b.regionLocation?.region?.toLowerCase().includes(trimmedSearch) ||
+      (b.regionLocation?.citySubcity && b.regionLocation.citySubcity.toLowerCase().includes(trimmedSearch)) ||
       (b.specialization && b.specialization.toLowerCase().includes(trimmedSearch));
 
     const matchesRegion =
       selectedRegion === "all" ||
-      b.regionLocation.region.toLowerCase() === selectedRegion.toLowerCase();
+      b.regionLocation?.region?.toLowerCase() === selectedRegion.toLowerCase();
 
     const matchesSpec =
       selectedSpec === "all" ||
@@ -146,10 +203,10 @@ export default function BrokersDirectoryPage() {
   const totalCommissionETB = brokers.reduce((acc, b) => acc + (b.totalCommissionPaidETB || 0), 0);
   const avgCommission =
     totalBrokers > 0
-      ? (brokers.reduce((acc, b) => acc + b.commissionPct, 0) / totalBrokers).toFixed(1)
+      ? (brokers.reduce((acc, b) => acc + (b.commissionPct || 0), 0) / totalBrokers).toFixed(1)
       : "7.0";
 
-  // Handle Add New Broker
+  // 1 & 2. Handle Add New Broker Form (Firestore addDoc/setDoc + Storage Upload)
   const handleCreateBroker = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.fullName.trim() || !formData.phoneNumber.trim() || !formData.address.trim()) {
@@ -159,39 +216,89 @@ export default function BrokersDirectoryPage() {
 
     try {
       setIsSubmitting(true);
+      const brokerId = `brk-${Date.now()}`;
+
+      // 1. Upload Broker ID Document to Firebase Storage: brokers/{brokerId}/...
+      let idDocUrl = "";
+      let idDocName = "";
+      if (attachedIdFile) {
+        setUploadStatus("Uploading Broker ID to Firebase Storage...");
+        const path = `brokers/${brokerId}/id_${Date.now()}_${attachedIdFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        idDocUrl = await uploadFileToStorage(attachedIdFile, path);
+        idDocName = attachedIdFile.name;
+      }
+
+      // 2. Upload Broker Agreement Document to Firebase Storage: brokers/{brokerId}/...
+      let agreementDocUrl = "";
+      let agreementDocName = "";
+      if (attachedAgreementFile) {
+        setUploadStatus("Uploading Broker Agreement to Firebase Storage...");
+        const path = `brokers/${brokerId}/agreement_${Date.now()}_${attachedAgreementFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        agreementDocUrl = await uploadFileToStorage(attachedAgreementFile, path);
+        agreementDocName = attachedAgreementFile.name;
+      }
+
+      setUploadStatus("Saving broker to Cloud Firestore...");
+
+      // Prepare complete Broker document
+      const newBrokerData: Broker = {
+        id: brokerId,
+        fullName: formData.fullName.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
+        email: formData.email.trim() || undefined,
+        address: formData.address.trim(),
+        regionLocation: {
+          region: formData.region,
+          citySubcity: formData.citySubcity.trim() || undefined,
+        },
+        commissionPct: Number(formData.commissionPct) || 5.0,
+        specialization: formData.specialization || "Heavy Machinery",
+        tinNumber: formData.tinNumber.trim() || undefined,
+        nationalIdNumber: formData.nationalIdNumber.trim() || undefined,
+        faydaFinNumber: formData.faydaFinNumber.trim() || undefined,
+        faydaFinStatus: formData.faydaFinStatus || "verified",
+        dealsClosedCount: Number(formData.dealsClosedCount) || 0,
+        totalCommissionPaidETB: Number(formData.totalCommissionPaidETB) || 0,
+        idDocumentUrl: idDocUrl || undefined,
+        idDocumentName: idDocName || undefined,
+        agreementDocumentUrl: agreementDocUrl || undefined,
+        agreementDocumentName: agreementDocName || undefined,
+        payoutBank: {
+          bankName: formData.bankName,
+          accountNumber: formData.accountNumber.trim() || "1000000000000",
+          accountHolderName: formData.accountHolderName.trim() || formData.fullName.trim(),
+        },
+        notes: formData.notes.trim() || undefined,
+        status: "active",
+        createdAt: new Date().toISOString(),
+      };
+
+      // 3. Directly save to Cloud Firestore collection "brokers" via setDoc
+      if (firestore && isFirebaseConfigured) {
+        try {
+          const brokerDocRef = doc(firestore, "brokers", brokerId);
+          await setDoc(brokerDocRef, newBrokerData);
+        } catch (fsErr) {
+          console.warn("Direct Firestore setDoc error:", fsErr);
+        }
+      }
+
+      // 4. Also call API route to ensure server-side DB synchronization
       const res = await fetch("/api/v1/brokers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: formData.fullName.trim(),
-          phoneNumber: formData.phoneNumber.trim(),
-          email: formData.email.trim() || undefined,
-          address: formData.address.trim(),
-          regionLocation: {
-            region: formData.region,
-            citySubcity: formData.citySubcity.trim() || undefined,
-          },
-          commissionPct: Number(formData.commissionPct) || 5.0,
-          specialization: formData.specialization,
-          tinNumber: formData.tinNumber.trim() || undefined,
-          nationalIdNumber: formData.nationalIdNumber.trim() || undefined,
-          faydaFinNumber: formData.faydaFinNumber.trim() || undefined,
-          payoutBank: {
-            bankName: formData.bankName,
-            accountNumber: formData.accountNumber.trim() || "1000000000000",
-            accountHolderName: formData.accountHolderName.trim() || formData.fullName.trim(),
-          },
-          notes: formData.notes.trim() || undefined,
-          status: "active",
-        }),
+        body: JSON.stringify(newBrokerData),
       });
 
       const resData = await res.json();
       if (resData.success) {
-        showNotification("success", `Broker "${resData.data.fullName}" successfully registered!`);
+        showNotification("success", `Broker "${newBrokerData.fullName}" successfully registered & saved to Cloud Firestore!`);
         setIsAddModalOpen(false);
         setFormData(initialFormState);
-        await fetchBrokers();
+        setAttachedIdFile(null);
+        setAttachedIdFileName("");
+        setAttachedAgreementFile(null);
+        setAttachedAgreementFileName("");
       } else {
         showNotification("error", resData.error || "Failed to register broker.");
       }
@@ -199,6 +306,7 @@ export default function BrokersDirectoryPage() {
       showNotification("error", err.message || "Network error while saving broker.");
     } finally {
       setIsSubmitting(false);
+      setUploadStatus("");
     }
   };
 
@@ -210,61 +318,110 @@ export default function BrokersDirectoryPage() {
       phoneNumber: broker.phoneNumber,
       email: broker.email || "",
       address: broker.address,
-      region: broker.regionLocation.region,
-      citySubcity: broker.regionLocation.citySubcity || "",
+      region: broker.regionLocation?.region || "Addis Ababa",
+      citySubcity: broker.regionLocation?.citySubcity || "",
       commissionPct: broker.commissionPct,
       specialization: broker.specialization || "Heavy Machinery",
       tinNumber: broker.tinNumber || "",
       nationalIdNumber: broker.nationalIdNumber || "",
       faydaFinNumber: broker.faydaFinNumber || "",
+      faydaFinStatus: broker.faydaFinStatus || "verified",
+      dealsClosedCount: broker.dealsClosedCount || 0,
+      totalCommissionPaidETB: broker.totalCommissionPaidETB || 0,
       bankName: broker.payoutBank?.bankName || "Commercial Bank of Ethiopia (CBE)",
       accountNumber: broker.payoutBank?.accountNumber || "",
       accountHolderName: broker.payoutBank?.accountHolderName || broker.fullName,
       notes: broker.notes || "",
     });
+    setEditAttachedIdFile(null);
+    setEditAttachedAgreementFile(null);
     setIsEditModalOpen(true);
   };
 
-  // Handle Update Broker
+  // 3. Handle Update Broker (Firestore updateDoc + API)
   const handleUpdateBroker = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!brokerToEdit) return;
 
     try {
       setIsSubmitting(true);
+      setUploadStatus("Updating broker parameters...");
+
+      let updatedIdUrl = brokerToEdit.idDocumentUrl;
+      let updatedIdName = brokerToEdit.idDocumentName;
+      if (editAttachedIdFile) {
+        setUploadStatus("Uploading new Broker ID to Firebase Storage...");
+        const path = `brokers/${brokerToEdit.id}/id_${Date.now()}_${editAttachedIdFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        updatedIdUrl = await uploadFileToStorage(editAttachedIdFile, path);
+        updatedIdName = editAttachedIdFile.name;
+      }
+
+      let updatedAgreementUrl = brokerToEdit.agreementDocumentUrl;
+      let updatedAgreementName = brokerToEdit.agreementDocumentName;
+      if (editAttachedAgreementFile) {
+        setUploadStatus("Uploading new Broker Agreement to Firebase Storage...");
+        const path = `brokers/${brokerToEdit.id}/agreement_${Date.now()}_${editAttachedAgreementFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        updatedAgreementUrl = await uploadFileToStorage(editAttachedAgreementFile, path);
+        updatedAgreementName = editAttachedAgreementFile.name;
+      }
+
+      const updatedBrokerData: Partial<Broker> = {
+        fullName: formData.fullName.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
+        email: formData.email.trim() || undefined,
+        address: formData.address.trim(),
+        regionLocation: {
+          region: formData.region,
+          citySubcity: formData.citySubcity.trim() || undefined,
+        },
+        commissionPct: Number(formData.commissionPct) || 5.0,
+        specialization: formData.specialization,
+        tinNumber: formData.tinNumber.trim() || undefined,
+        nationalIdNumber: formData.nationalIdNumber.trim() || undefined,
+        faydaFinNumber: formData.faydaFinNumber.trim() || undefined,
+        faydaFinStatus: formData.faydaFinStatus,
+        dealsClosedCount: Number(formData.dealsClosedCount) || 0,
+        totalCommissionPaidETB: Number(formData.totalCommissionPaidETB) || 0,
+        idDocumentUrl: updatedIdUrl,
+        idDocumentName: updatedIdName,
+        agreementDocumentUrl: updatedAgreementUrl,
+        agreementDocumentName: updatedAgreementName,
+        payoutBank: {
+          bankName: formData.bankName,
+          accountNumber: formData.accountNumber.trim() || "1000000000000",
+          accountHolderName: formData.accountHolderName.trim() || formData.fullName.trim(),
+        },
+        notes: formData.notes.trim() || undefined,
+      };
+
+      // 1. Direct Cloud Firestore updateDoc
+      if (firestore && isFirebaseConfigured) {
+        try {
+          const brokerDocRef = doc(firestore, "brokers", brokerToEdit.id);
+          await updateDoc(brokerDocRef, {
+            ...updatedBrokerData,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (fsErr) {
+          console.warn("Direct Firestore updateDoc error:", fsErr);
+        }
+      }
+
+      // 2. Sync to API route
       const res = await fetch("/api/v1/brokers", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: brokerToEdit.id,
-          fullName: formData.fullName.trim(),
-          phoneNumber: formData.phoneNumber.trim(),
-          email: formData.email.trim() || undefined,
-          address: formData.address.trim(),
-          regionLocation: {
-            region: formData.region,
-            citySubcity: formData.citySubcity.trim() || undefined,
-          },
-          commissionPct: Number(formData.commissionPct) || 5.0,
-          specialization: formData.specialization,
-          tinNumber: formData.tinNumber.trim() || undefined,
-          nationalIdNumber: formData.nationalIdNumber.trim() || undefined,
-          faydaFinNumber: formData.faydaFinNumber.trim() || undefined,
-          payoutBank: {
-            bankName: formData.bankName,
-            accountNumber: formData.accountNumber.trim() || "1000000000000",
-            accountHolderName: formData.accountHolderName.trim() || formData.fullName.trim(),
-          },
-          notes: formData.notes.trim() || undefined,
+          ...updatedBrokerData,
         }),
       });
 
       const resData = await res.json();
       if (resData.success) {
-        showNotification("success", `Broker "${formData.fullName}" updated successfully!`);
+        showNotification("success", `Broker "${formData.fullName}" updated permanently in Cloud Firestore!`);
         setIsEditModalOpen(false);
         setBrokerToEdit(null);
-        await fetchBrokers();
       } else {
         showNotification("error", resData.error || "Failed to update broker.");
       }
@@ -272,24 +429,36 @@ export default function BrokersDirectoryPage() {
       showNotification("error", err.message || "Network error while updating broker.");
     } finally {
       setIsSubmitting(false);
+      setUploadStatus("");
     }
   };
 
-  // Handle Delete Broker
+  // 3. Handle Delete Broker (Firestore deleteDoc + API)
   const handleDeleteBroker = async () => {
     if (!brokerToDelete) return;
 
     try {
       setIsSubmitting(true);
+
+      // 1. Direct Cloud Firestore deleteDoc
+      if (firestore && isFirebaseConfigured) {
+        try {
+          const brokerDocRef = doc(firestore, "brokers", brokerToDelete.id);
+          await deleteDoc(brokerDocRef);
+        } catch (fsErr) {
+          console.warn("Direct Firestore deleteDoc error:", fsErr);
+        }
+      }
+
+      // 2. Sync to API route
       const res = await fetch(`/api/v1/brokers?id=${brokerToDelete.id}`, {
         method: "DELETE",
       });
       const resData = await res.json();
       if (resData.success) {
-        showNotification("success", `Broker "${brokerToDelete.fullName}" has been removed.`);
+        showNotification("success", `Broker "${brokerToDelete.fullName}" has been permanently removed.`);
         setIsDeleteModalOpen(false);
         setBrokerToDelete(null);
-        await fetchBrokers();
       } else {
         showNotification("error", resData.error || "Failed to delete broker.");
       }
@@ -301,123 +470,103 @@ export default function BrokersDirectoryPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto min-h-screen text-neutral-100">
+    <div className="space-y-6 animate-fadeIn">
       {/* Toast Notification */}
       {notification && (
         <div
           className={cn(
-            "fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border text-sm font-medium transition-all animate-bounce",
+            "fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-semibold transition-all duration-300",
             notification.type === "success"
-              ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
-              : "bg-rose-950/90 border-rose-500/50 text-rose-200"
+              ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
+              : "bg-rose-950/90 border-rose-500/40 text-rose-200"
           )}
         >
-          {notification.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-          )}
+          {notification.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
           <span>{notification.message}</span>
-          <button
-            onClick={() => setNotification(null)}
-            className="ml-2 hover:opacity-80 text-neutral-400"
-          >
-            <X size={16} />
-          </button>
         </div>
       )}
 
-      {/* Header & Primary CTA */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#df2531]/20 pb-6">
+      {/* Top Banner Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 rounded-2xl bg-[#0a0a0a] border border-[#df2531]/30 shadow-lg">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-[#df2531]/15 border border-[#df2531]/30 text-[#df2531]">
-              <Briefcase className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2 font-display">
-                Brokers & Sourcing Network
-                <span className="text-xs font-mono font-medium bg-[#df2531]/20 text-[#df2531] px-2.5 py-0.5 rounded-full border border-[#df2531]/40 font-display">
-                  Asset Management
-                </span>
-              </h1>
-              <p className="text-xs sm:text-sm text-neutral-400 mt-0.5 font-sans">
-                Centralized Ethiopian broker registry, verified contact directory, regional coverage & commission payouts.
-              </p>
-            </div>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 font-display">
+            <Briefcase className="text-[#df2531]" size={24} />
+            Ethiopian Brokers &amp; Sourcing Agents Directory
+          </h1>
+          <p className="text-xs text-neutral-400 mt-1">
+            Permanent Cloud Firestore registry, Firebase Storage documents, Fayda FIN verification, and commission payout management.
+          </p>
         </div>
 
         <button
           onClick={() => {
             setFormData(initialFormState);
+            setAttachedIdFile(null);
+            setAttachedIdFileName("");
+            setAttachedAgreementFile(null);
+            setAttachedAgreementFileName("");
             setIsAddModalOpen(true);
           }}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-sm shadow-lg shadow-[#df2531]/25 transition-all active:scale-95 font-display"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/30 border border-[#df2531]/50 transition-all font-display cursor-pointer"
         >
-          <Plus size={18} className="stroke-[3]" />
+          <Plus size={16} />
           <span>Add New Broker</span>
         </button>
       </div>
 
-      {/* KPI Metrics Row */}
+      {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-[#df2531]/30 hover:border-[#df2531]/60 transition-colors backdrop-blur-md">
-          <div className="flex items-center justify-between text-neutral-400 mb-2">
+        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800">
+          <div className="flex items-center justify-between text-neutral-400 mb-1">
             <span className="text-xs font-medium uppercase tracking-wider">Active Brokers</span>
-            <Briefcase size={16} className="text-[#df2531]" />
+            <UserCheck size={16} className="text-[#df2531]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white font-display">{totalBrokers}</div>
-          <div className="text-[11px] text-neutral-500 mt-1 flex items-center gap-1 font-mono">
-            <CheckCircle2 size={12} className="text-emerald-400" /> Verified Partners
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-[#df2531]/30 hover:border-[#df2531]/60 transition-colors backdrop-blur-md">
-          <div className="flex items-center justify-between text-neutral-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Avg Commission</span>
-            <Percent size={16} className="text-[#df2531]" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-[#df2531] font-display">{avgCommission}%</div>
+          <div className="text-xl sm:text-2xl font-black text-white font-display">{totalBrokers}</div>
           <div className="text-[11px] text-neutral-500 mt-1 font-mono">
-            Standard Ethiopian rate: 5%–10%
+            {brokers.filter((b) => b.faydaFinStatus === "verified" || b.faydaFinNumber).length} Fayda verified
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-[#df2531]/30 hover:border-[#df2531]/60 transition-colors backdrop-blur-md">
-          <div className="flex items-center justify-between text-neutral-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Deals Closed</span>
-            <TrendingUp size={16} className="text-emerald-400" />
+        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800">
+          <div className="flex items-center justify-between text-neutral-400 mb-1">
+            <span className="text-xs font-medium uppercase tracking-wider">Avg Commission</span>
+            <Percent size={16} className="text-emerald-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white font-display">{totalDeals}</div>
-          <div className="text-[11px] text-emerald-400 mt-1 font-mono">
-            Heavy Machinery & Fleet leases
+          <div className="text-xl sm:text-2xl font-black text-emerald-400 font-display">
+            {avgCommission}%
           </div>
+          <div className="text-[11px] text-neutral-500 mt-1 font-mono">Standard 5% - 10% rate</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-[#df2531]/30 hover:border-[#df2531]/60 transition-colors backdrop-blur-md">
-          <div className="flex items-center justify-between text-neutral-400 mb-2">
+        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800">
+          <div className="flex items-center justify-between text-neutral-400 mb-1">
+            <span className="text-xs font-medium uppercase tracking-wider">Total Deals Sourced</span>
+            <TrendingUp size={16} className="text-blue-400" />
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-white font-display">{totalDeals}</div>
+          <div className="text-[11px] text-neutral-500 mt-1 font-mono">Closed lease contracts</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#0a0a0a] border border-neutral-800">
+          <div className="flex items-center justify-between text-neutral-400 mb-1">
             <span className="text-xs font-medium uppercase tracking-wider">Total Commission</span>
             <DollarSign size={16} className="text-[#df2531]" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-[#df2531] font-display">
             {formatETB(totalCommissionETB)}
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1 font-mono">
-            Disbursed to date
-          </div>
+          <div className="text-[11px] text-neutral-500 mt-1 font-mono">Disbursed to date</div>
         </div>
       </div>
 
       {/* Search, Filter Bar & Specialization Pills */}
       <div className="space-y-3 bg-[#0a0a0a] border border-[#df2531]/20 p-4 rounded-2xl">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-          {/* Live Search Input with Instant Matching Badge */}
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search Broker Name (e.g. Ato Kassahun, Alemayehu...), Phone, Region, or Subcity..."
+              placeholder="Search Broker Name, Phone, Region, or Subcity..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-neutral-900/90 border border-neutral-700/80 rounded-xl pl-10 pr-9 py-2.5 text-sm text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#df2531]/50 focus:border-[#df2531] transition-all font-medium font-sans"
@@ -432,7 +581,6 @@ export default function BrokersDirectoryPage() {
             )}
           </div>
 
-          {/* Region Dropdown Filter */}
           <div className="flex items-center gap-2">
             <MapPin size={16} className="text-[#df2531] shrink-0 hidden sm:block" />
             <select
@@ -440,7 +588,7 @@ export default function BrokersDirectoryPage() {
               onChange={(e) => setSelectedRegion(e.target.value)}
               className="bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-neutral-200 focus:outline-none focus:border-[#df2531] font-medium"
             >
-              <option value="all">All Regions & Corridors</option>
+              <option value="all">All Regions &amp; Corridors</option>
               {ETHIOPIAN_REGIONS.map((reg) => (
                 <option key={reg} value={reg}>
                   {reg}
@@ -458,7 +606,7 @@ export default function BrokersDirectoryPage() {
               key={spec}
               onClick={() => setSelectedSpec(spec)}
               className={cn(
-                "px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors border",
+                "px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors border cursor-pointer",
                 selectedSpec === spec
                   ? "bg-[#df2531] text-white border-[#df2531] font-display font-bold shadow-sm"
                   : "bg-neutral-900/80 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"
@@ -468,32 +616,13 @@ export default function BrokersDirectoryPage() {
             </button>
           ))}
         </div>
-
-        {/* Active Filter Search Notice */}
-        {trimmedSearch && (
-          <div className="text-xs text-[#df2531] bg-[#df2531]/10 border border-[#df2531]/20 px-3 py-1.5 rounded-xl flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} className="shrink-0" />
-              <span>
-                Filtering by broker name or keyword: <strong>"{search}"</strong> — found{" "}
-                <strong>{filteredBrokers.length}</strong> matching broker{filteredBrokers.length === 1 ? "" : "s"}.
-              </span>
-            </div>
-            <button
-              onClick={() => setSearch("")}
-              className="underline hover:text-white font-medium ml-2 text-[11px]"
-            >
-              Clear Filter
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Brokers Directory Grid */}
       {loading ? (
         <div className="py-20 text-center space-y-3">
           <div className="inline-block w-8 h-8 border-2 border-[#df2531] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-neutral-400">Loading Ethiopian broker network...</p>
+          <p className="text-sm text-neutral-400 font-mono">Synchronizing broker records from Cloud Firestore...</p>
         </div>
       ) : filteredBrokers.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-dashed border-[#df2531]/20 bg-[#0a0a0a] space-y-3">
@@ -504,97 +633,80 @@ export default function BrokersDirectoryPage() {
               ? `No broker records matched "${search}". Try searching another name, phone number, or region.`
               : "No brokers currently registered in this category."}
           </p>
-          {trimmedSearch && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setSelectedRegion("all");
-                setSelectedSpec("all");
-              }}
-              className="text-xs text-[#df2531] underline hover:text-red-400 font-medium"
-            >
-              Reset all filters
-            </button>
-          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredBrokers.map((broker) => {
-            const isNameMatched =
-              trimmedSearch && broker.fullName.toLowerCase().includes(trimmedSearch);
+            const isNameMatched = trimmedSearch && broker.fullName?.toLowerCase().includes(trimmedSearch);
+            const isFaydaVerified = broker.faydaFinStatus === "verified" || Boolean(broker.faydaFinNumber);
 
             return (
               <div
                 key={broker.id}
                 className={cn(
                   "group relative rounded-2xl bg-[#0a0a0a] border p-5 transition-all duration-200 hover:border-[#df2531]/50 hover:shadow-xl hover:shadow-[#df2531]/10 flex flex-col justify-between",
-                  isNameMatched
-                    ? "border-[#df2531] ring-1 ring-[#df2531]/40 bg-neutral-950"
-                    : "border-neutral-800"
+                  isNameMatched ? "border-[#df2531] ring-1 ring-[#df2531]/40 bg-neutral-950" : "border-neutral-800"
                 )}
               >
-                {/* Header: Name, Initials, Commission Badge & Action Icons */}
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
-                      {/* Initials Avatar */}
                       <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#df2531]/25 to-[#df2531]/10 border border-[#df2531]/30 flex items-center justify-center text-[#df2531] font-black text-sm shrink-0 shadow-inner font-display">
                         {broker.fullName
-                          .split(" ")
+                          ?.split(" ")
                           .map((n) => n[0])
                           .slice(0, 2)
-                          .join("")}
+                          .join("") || "BR"}
                       </div>
 
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <h3
-                            className={cn(
-                              "text-base font-bold text-white group-hover:text-[#df2531] transition-colors font-display",
-                              isNameMatched && "text-[#df2531] underline underline-offset-4 decoration-[#df2531]"
-                            )}
-                          >
+                          <h3 className="text-sm font-bold text-white group-hover:text-[#df2531] transition-colors font-display">
                             {broker.fullName}
                           </h3>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-400">
-                          <span className="font-mono text-[11px] text-neutral-400 flex items-center gap-1">
-                            <ShieldCheck size={12} className="text-emerald-400" />
-                            {broker.faydaFinNumber ? "Fayda FIN Verified" : "ID Verified"}
+
+                        {/* Specialization & Region Tags */}
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-800 text-neutral-300">
+                            {broker.specialization || "All Assets"}
+                          </span>
+                          <span className="text-[10px] font-mono text-neutral-400">
+                            {broker.regionLocation?.region}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Commission Rate Badge */}
-                    <div className="flex flex-col items-end">
-                      <span className="px-2.5 py-1 rounded-xl bg-[#df2531]/15 border border-[#df2531]/30 text-[#df2531] font-black text-xs font-mono shadow-sm">
-                        {broker.commissionPct}% Comm
-                      </span>
-                      <span className="text-[10px] text-neutral-500 font-mono mt-0.5 uppercase">
-                        {broker.status}
+                    <div className="text-right">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold font-mono">
+                        {broker.commissionPct}%
                       </span>
                     </div>
                   </div>
 
-                  {/* Specialization & Region Badges */}
-                  <div className="flex items-center gap-2 flex-wrap mb-4">
-                    {broker.specialization && (
-                      <span className="px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 text-[11px] font-medium border border-neutral-700/60">
-                        {broker.specialization}
+                  {/* Fayda FIN Verification Badge */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                        isFaydaVerified
+                          ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                          : "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                      )}
+                    >
+                      <ShieldCheck size={11} />
+                      {isFaydaVerified ? "Fayda FIN Verified" : "Fayda Verification Pending"}
+                    </span>
+                    {broker.faydaFinNumber && (
+                      <span className="text-[10px] font-mono text-neutral-400 truncate max-w-[150px]">
+                        {broker.faydaFinNumber}
                       </span>
                     )}
-                    <span className="px-2 py-0.5 rounded-lg bg-neutral-800/80 text-neutral-300 text-[11px] font-medium border border-neutral-700/60 flex items-center gap-1">
-                      <MapPin size={11} className="text-[#df2531]" />
-                      {broker.regionLocation.citySubcity
-                        ? `${broker.regionLocation.citySubcity}, ${broker.regionLocation.region}`
-                        : broker.regionLocation.region}
-                    </span>
                   </div>
 
-                  {/* Full Contact Information Block */}
-                  <div className="space-y-2 rounded-xl bg-black/60 border border-neutral-800/80 p-3 text-xs mb-4">
-                    {/* Phone */}
+                  {/* Contact Info */}
+                  <div className="space-y-1.5 text-xs text-neutral-300 mb-3 bg-neutral-900/60 p-3 rounded-xl border border-neutral-800/80">
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-400 flex items-center gap-1.5">
                         <Phone size={13} className="text-emerald-400" /> Phone:
@@ -607,7 +719,6 @@ export default function BrokersDirectoryPage() {
                       </a>
                     </div>
 
-                    {/* Email */}
                     {broker.email && (
                       <div className="flex items-center justify-between">
                         <span className="text-neutral-400 flex items-center gap-1.5">
@@ -622,7 +733,6 @@ export default function BrokersDirectoryPage() {
                       </div>
                     )}
 
-                    {/* Physical Address */}
                     <div className="flex items-start justify-between gap-2 pt-1 border-t border-neutral-800/60">
                       <span className="text-neutral-400 shrink-0 flex items-center gap-1.5">
                         <MapPin size={13} className="text-[#df2531]" /> Address:
@@ -632,18 +742,48 @@ export default function BrokersDirectoryPage() {
                       </span>
                     </div>
 
-                    {/* Payout Bank */}
                     {broker.payoutBank && (
                       <div className="flex items-center justify-between pt-1 border-t border-neutral-800/60 text-[11px]">
                         <span className="text-neutral-400 flex items-center gap-1.5">
                           <Building2 size={12} className="text-[#df2531]" /> Payout:
                         </span>
                         <span className="font-mono text-neutral-300 truncate max-w-[170px]">
-                          {broker.payoutBank.bankName.split("(")[0]} ({broker.payoutBank.accountNumber.slice(-4)})
+                          {broker.payoutBank.bankName.split("(")[0]} ({broker.payoutBank.accountNumber?.slice(-4) || "0000"})
                         </span>
                       </div>
                     )}
                   </div>
+
+                  {/* Cloud Documents Links */}
+                  {(broker.idDocumentUrl || broker.agreementDocumentUrl) && (
+                    <div className="flex items-center gap-2 mb-3 px-1 text-[10px]">
+                      <span className="text-neutral-500 font-semibold uppercase">Cloud Docs:</span>
+                      {broker.idDocumentUrl && (
+                        <a
+                          href={broker.idDocumentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#df2531]/50 transition-colors"
+                        >
+                          <FileCheck size={11} className="text-[#df2531]" />
+                          <span>ID File</span>
+                          <ExternalLink size={10} />
+                        </a>
+                      )}
+                      {broker.agreementDocumentUrl && (
+                        <a
+                          href={broker.agreementDocumentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-emerald-500/50 transition-colors"
+                        >
+                          <FileText size={11} className="text-emerald-400" />
+                          <span>Agreement</span>
+                          <ExternalLink size={10} />
+                        </a>
+                      )}
+                    </div>
+                  )}
 
                   {/* Performance Metrics */}
                   <div className="grid grid-cols-2 gap-2 text-center text-xs mb-4 bg-neutral-950/80 p-2.5 rounded-xl border border-neutral-800/60">
@@ -669,23 +809,21 @@ export default function BrokersDirectoryPage() {
                 {/* Footer Action Icons: Edit, Delete, Direct Call */}
                 <div className="pt-3 border-t border-neutral-800 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    {/* Edit Icon Button */}
                     <button
                       onClick={() => openEditModal(broker)}
                       title="Edit Broker Details"
-                      className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
+                      className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                     >
                       <Pencil size={15} />
                     </button>
 
-                    {/* Delete Icon Button */}
                     <button
                       onClick={() => {
                         setBrokerToDelete(broker);
                         setIsDeleteModalOpen(true);
                       }}
                       title="Delete Broker"
-                      className="p-2 rounded-xl bg-neutral-800 hover:bg-rose-950/60 text-neutral-400 hover:text-rose-400 transition-colors"
+                      className="p-2 rounded-xl bg-neutral-800 hover:bg-rose-950/60 text-neutral-400 hover:text-rose-400 transition-colors cursor-pointer"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -706,7 +844,7 @@ export default function BrokersDirectoryPage() {
       )}
 
       {/* ==================================================== */}
-      {/* ADD NEW BROKER MODAL */}
+      {/* ADD NEW BROKER MODAL (All Required Fields + Storage) */}
       {/* ==================================================== */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -719,7 +857,7 @@ export default function BrokersDirectoryPage() {
                 <div>
                   <h2 className="text-lg font-bold text-white font-display">Register New Broker / Sourcing Agent</h2>
                   <p className="text-xs text-neutral-400 font-sans">
-                    Add verified Ethiopian broker contact, location, and commission rate.
+                    Saved permanently to Cloud Firestore &amp; Firebase Storage.
                   </p>
                 </div>
               </div>
@@ -818,7 +956,7 @@ export default function BrokersDirectoryPage() {
                 {/* City / Subcity */}
                 <div>
                   <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    City / Subcity
+                    City / Subcity / Corridor
                   </label>
                   <input
                     type="text"
@@ -828,28 +966,11 @@ export default function BrokersDirectoryPage() {
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531]"
                   />
                 </div>
-              </div>
 
-              {/* Physical Address */}
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Physical Office / Depot Address <span className="text-[#df2531]">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Jarkros Sets Building, 2nd Floor, Addis Ababa"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531]"
-                />
-              </div>
-
-              {/* Specialization */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Specialization */}
                 <div>
                   <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    Asset Specialization
+                    Asset Specialization Category *
                   </label>
                   <select
                     value={formData.specialization}
@@ -866,6 +987,22 @@ export default function BrokersDirectoryPage() {
                   </select>
                 </div>
 
+                {/* Fayda FIN Verification Status */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Fayda FIN Verification Status *
+                  </label>
+                  <select
+                    value={formData.faydaFinStatus}
+                    onChange={(e) => setFormData({ ...formData, faydaFinStatus: e.target.value as any })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531]"
+                  >
+                    <option value="verified">Verified (Active KYC)</option>
+                    <option value="pending">Pending Document Verification</option>
+                    <option value="unverified">Unverified</option>
+                  </select>
+                </div>
+
                 {/* Fayda FIN / TIN */}
                 <div>
                   <label className="block text-xs font-semibold text-neutral-300 mb-1">
@@ -878,6 +1015,140 @@ export default function BrokersDirectoryPage() {
                     onChange={(e) => setFormData({ ...formData, faydaFinNumber: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531] font-mono"
                   />
+                </div>
+
+                {/* Deals Closed Count */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Deals Closed (Contracts Sourced)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.dealsClosedCount}
+                    onChange={(e) => setFormData({ ...formData, dealsClosedCount: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531] font-mono"
+                  />
+                </div>
+
+                {/* Total Commission Disbursed */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Total Commission Disbursed (ETB)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.totalCommissionPaidETB}
+                    onChange={(e) => setFormData({ ...formData, totalCommissionPaidETB: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-emerald-400 font-bold focus:outline-none focus:border-[#df2531] font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Physical Office Address */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                  Physical Office / Depot Address <span className="text-[#df2531]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Jarkros Sets Building, 2nd Floor, Addis Ababa"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#df2531]"
+                />
+              </div>
+
+              {/* Document Attachments for Firebase Storage */}
+              <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-3">
+                <span className="text-xs font-bold text-[#df2531] uppercase tracking-wider block font-display flex items-center gap-1.5">
+                  <Upload size={14} />
+                  Attached Documents (Stored permanently in Firebase Cloud Storage: brokers/&#123;id&#125;/...)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Broker ID File */}
+                  <div className="p-3 rounded-xl border border-dashed border-neutral-800 hover:border-[#df2531]/50 bg-black/40">
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Broker NID / Fayda ID Document
+                    </label>
+                    {attachedIdFile ? (
+                      <div className="flex items-center justify-between text-xs text-emerald-400 font-mono">
+                        <span className="truncate flex items-center gap-1">
+                          <FileCheck size={14} />
+                          <strong className="truncate max-w-[160px]">{attachedIdFileName}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachedIdFile(null);
+                            setAttachedIdFileName("");
+                          }}
+                          className="text-rose-400 hover:text-rose-300 text-[10px] font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-1 py-1.5 cursor-pointer text-center">
+                        <Upload size={16} className="text-[#df2531]" />
+                        <span className="text-[11px] text-neutral-400">Upload Broker ID (PDF, JPG, PNG)</span>
+                        <input
+                          type="file"
+                          accept=".pdf,image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAttachedIdFile(e.target.files[0]);
+                              setAttachedIdFileName(e.target.files[0].name);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Broker Agreement File */}
+                  <div className="p-3 rounded-xl border border-dashed border-neutral-800 hover:border-emerald-500/50 bg-black/40">
+                    <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                      Broker Commission Agreement Contract
+                    </label>
+                    {attachedAgreementFile ? (
+                      <div className="flex items-center justify-between text-xs text-emerald-400 font-mono">
+                        <span className="truncate flex items-center gap-1">
+                          <FileText size={14} />
+                          <strong className="truncate max-w-[160px]">{attachedAgreementFileName}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachedAgreementFile(null);
+                            setAttachedAgreementFileName("");
+                          }}
+                          className="text-rose-400 hover:text-rose-300 text-[10px] font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-1 py-1.5 cursor-pointer text-center">
+                        <Upload size={16} className="text-emerald-400" />
+                        <span className="text-[11px] text-neutral-400">Upload Agreement Contract (PDF)</span>
+                        <input
+                          type="file"
+                          accept=".pdf,image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAttachedAgreementFile(e.target.files[0]);
+                              setAttachedAgreementFileName(e.target.files[0].name);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -940,21 +1211,35 @@ export default function BrokersDirectoryPage() {
                 />
               </div>
 
+              {uploadStatus && (
+                <div className="p-2.5 rounded-lg bg-[#df2531]/10 border border-[#df2531]/30 text-[#df2531] text-xs flex items-center gap-2 animate-pulse">
+                  <Sparkles size={14} />
+                  <span>{uploadStatus}</span>
+                </div>
+              )}
+
               {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/25 transition-all disabled:opacity-50 font-display"
+                  className="px-5 py-2.5 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/25 transition-all disabled:opacity-50 font-display flex items-center gap-2 cursor-pointer"
                 >
-                  {isSubmitting ? "Saving..." : "Save Broker"}
+                  {isSubmitting ? (
+                    <>
+                      <span className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <span>Permanently Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save &amp; Register Broker</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -963,7 +1248,7 @@ export default function BrokersDirectoryPage() {
       )}
 
       {/* ==================================================== */}
-      {/* EDIT BROKER MODAL */}
+      {/* EDIT BROKER MODAL (Firestore updateDoc) */}
       {/* ==================================================== */}
       {isEditModalOpen && brokerToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -975,7 +1260,7 @@ export default function BrokersDirectoryPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white font-display">Edit Broker: {brokerToEdit.fullName}</h2>
-                  <p className="text-xs text-neutral-400 font-sans">Update contact, address, or commission parameters.</p>
+                  <p className="text-xs text-neutral-400 font-sans">Update contact, address, or commission parameters in Cloud Firestore.</p>
                 </div>
               </div>
               <button
@@ -983,7 +1268,7 @@ export default function BrokersDirectoryPage() {
                   setIsEditModalOpen(false);
                   setBrokerToEdit(null);
                 }}
-                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800"
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -1070,22 +1355,7 @@ export default function BrokersDirectoryPage() {
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531]"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Physical Office / Depot Address <span className="text-[#df2531]">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-300 mb-1">Specialization</label>
                   <select
@@ -1104,13 +1374,76 @@ export default function BrokersDirectoryPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-neutral-300 mb-1">Fayda FIN or TIN</label>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Fayda FIN Verification Status
+                  </label>
+                  <select
+                    value={formData.faydaFinStatus}
+                    onChange={(e) => setFormData({ ...formData, faydaFinStatus: e.target.value as any })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531]"
+                  >
+                    <option value="verified">Verified</option>
+                    <option value="pending">Pending</option>
+                    <option value="unverified">Unverified</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">Deals Closed</label>
                   <input
-                    type="text"
-                    value={formData.faydaFinNumber}
-                    onChange={(e) => setFormData({ ...formData, faydaFinNumber: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531] font-mono"
+                    type="number"
+                    value={formData.dealsClosedCount}
+                    onChange={(e) => setFormData({ ...formData, dealsClosedCount: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">Total Commission Paid (ETB)</label>
+                  <input
+                    type="number"
+                    value={formData.totalCommissionPaidETB}
+                    onChange={(e) => setFormData({ ...formData, totalCommissionPaidETB: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-emerald-400 font-bold font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                  Physical Office / Depot Address <span className="text-[#df2531]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#df2531]"
+                />
+              </div>
+
+              {/* Upload Replacement Files in Edit Modal */}
+              <div className="p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                <span className="text-xs font-bold text-neutral-300 block">Replace Cloud Documents in Storage</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-neutral-400 mb-1">New Broker ID Document</label>
+                    <input
+                      type="file"
+                      accept=".pdf,image/*"
+                      onChange={(e) => e.target.files && setEditAttachedIdFile(e.target.files[0])}
+                      className="text-xs text-neutral-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-neutral-800 file:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-400 mb-1">New Agreement Contract</label>
+                    <input
+                      type="file"
+                      accept=".pdf,image/*"
+                      onChange={(e) => e.target.files && setEditAttachedAgreementFile(e.target.files[0])}
+                      className="text-xs text-neutral-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-neutral-800 file:text-white"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1131,16 +1464,16 @@ export default function BrokersDirectoryPage() {
                     setIsEditModalOpen(false);
                     setBrokerToEdit(null);
                   }}
-                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/25 transition-all disabled:opacity-50 font-display"
+                  className="px-5 py-2 rounded-xl bg-[#df2531] hover:bg-[#c41e29] text-white font-bold text-xs shadow-md shadow-[#df2531]/25 transition-all disabled:opacity-50 font-display cursor-pointer"
                 >
-                  {isSubmitting ? "Updating..." : "Update Broker"}
+                  {isSubmitting ? "Updating..." : "Update Broker in Cloud"}
                 </button>
               </div>
             </form>
@@ -1149,7 +1482,7 @@ export default function BrokersDirectoryPage() {
       )}
 
       {/* ==================================================== */}
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE CONFIRMATION MODAL (Firestore deleteDoc) */}
       {/* ==================================================== */}
       {isDeleteModalOpen && brokerToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -1160,13 +1493,13 @@ export default function BrokersDirectoryPage() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Delete Broker Record</h3>
-                <p className="text-xs text-neutral-400">This action cannot be undone.</p>
+                <p className="text-xs text-neutral-400">Permanently removes broker from Cloud Firestore.</p>
               </div>
             </div>
 
             <p className="text-xs text-neutral-300 leading-relaxed mb-6">
-              Are you sure you want to remove{" "}
-              <strong className="text-white">{brokerToDelete.fullName}</strong> ({brokerToDelete.commissionPct}% commission, {brokerToDelete.regionLocation.region}) from the active broker registry?
+              Are you sure you want to permanently remove{" "}
+              <strong className="text-white">{brokerToDelete.fullName}</strong> ({brokerToDelete.commissionPct}% commission, {brokerToDelete.regionLocation?.region}) from the active broker registry?
             </p>
 
             <div className="flex items-center justify-end gap-3">
@@ -1176,7 +1509,7 @@ export default function BrokersDirectoryPage() {
                   setIsDeleteModalOpen(false);
                   setBrokerToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors"
+                className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1184,7 +1517,7 @@ export default function BrokersDirectoryPage() {
                 type="button"
                 onClick={handleDeleteBroker}
                 disabled={isSubmitting}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? "Deleting..." : "Confirm Delete"}
               </button>

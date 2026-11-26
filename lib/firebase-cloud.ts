@@ -1,7 +1,7 @@
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
 import { storage as clientStorage, firestore as clientDb, isFirebaseConfigured } from "@/lib/firebase";
-import { User, Asset, SystemNotification } from "@/lib/types";
+import { User, Asset, SystemNotification, PartnerOnboarding, Broker } from "@/lib/types";
 
 /**
  * Uploads a local file or blob to Firebase Cloud Storage.
@@ -157,6 +157,76 @@ export async function syncNotificationToCloud(notification: SystemNotification):
     }
   } catch (err) {
     console.warn("Firestore syncNotificationToCloud error:", err);
+  }
+  return false;
+}
+
+/**
+ * Sync partner record to Cloud Firestore (partners collection)
+ */
+export async function syncPartnerToCloud(partner: PartnerOnboarding): Promise<boolean> {
+  try {
+    const partnerData = {
+      ...partner,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (clientDb && isFirebaseConfigured) {
+      await setDoc(doc(clientDb, "partners", partner.id), partnerData, { merge: true });
+      return true;
+    }
+  } catch (err) {
+    console.warn("Firestore syncPartnerToCloud error:", err);
+  }
+  return false;
+}
+
+/**
+ * Delete partner from Cloud Firestore (partners collection)
+ */
+export async function deletePartnerFromCloud(partnerId: string): Promise<boolean> {
+  try {
+    if (clientDb && isFirebaseConfigured) {
+      await deleteDoc(doc(clientDb, "partners", partnerId));
+      return true;
+    }
+  } catch (err) {
+    console.warn("Firestore deletePartnerFromCloud error:", err);
+  }
+  return false;
+}
+
+/**
+ * Sync broker record to Cloud Firestore (brokers collection)
+ */
+export async function syncBrokerToCloud(broker: Broker): Promise<boolean> {
+  try {
+    const brokerData = {
+      ...broker,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (clientDb && isFirebaseConfigured) {
+      await setDoc(doc(clientDb, "brokers", broker.id), brokerData, { merge: true });
+      return true;
+    }
+  } catch (err) {
+    console.warn("Firestore syncBrokerToCloud error:", err);
+  }
+  return false;
+}
+
+/**
+ * Delete broker from Cloud Firestore (brokers collection)
+ */
+export async function deleteBrokerFromCloud(brokerId: string): Promise<boolean> {
+  try {
+    if (clientDb && isFirebaseConfigured) {
+      await deleteDoc(doc(clientDb, "brokers", brokerId));
+      return true;
+    }
+  } catch (err) {
+    console.warn("Firestore deleteBrokerFromCloud error:", err);
   }
   return false;
 }

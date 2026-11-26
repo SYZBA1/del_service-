@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, INITIAL_BROKERS } from "@/lib/db";
 import { Broker } from "@/lib/types";
+import { adminDb } from "@/lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +11,45 @@ export async function GET(req: NextRequest) {
     const specialization = searchParams.get("specialization");
     const status = searchParams.get("status");
 
-    let brokers = db.getBrokers(search);
+    let brokers: Broker[] = [];
+
+    // 1. Try reading from Cloud Firestore via Firebase Admin SDK
+    if (adminDb) {
+      try {
+        const snap = await adminDb.collection("brokers").get();
+        if (!snap.empty) {
+          brokers = snap.docs.map((d) => d.data() as Broker);
+        } else {
+          // If collection is empty, seed initial brokers once
+          const batch = adminDb.batch();
+          for (const b of INITIAL_BROKERS) {
+            const docRef = adminDb.collection("brokers").doc(b.id);
+            batch.set(docRef, b);
+          }
+          await batch.commit();
+          brokers = [...INITIAL_BROKERS];
+        }
+      } catch (cloudErr) {
+        console.warn("Firestore Admin GET brokers error:", cloudErr);
+      }
+    }
+
+    // 2. Fallback to memory store if Firestore read did not succeed
+    if (brokers.length === 0) {
+      brokers = db.getBrokers(search);
+    } else {
+      // Sync in-memory store with Firestore data
+      db.brokers = brokers;
+      if (search) {
+        const q = search.toLowerCase();
+        brokers = brokers.filter(
+          (b) =>
+            b.fullName.toLowerCase().includes(q) ||
+            b.phoneNumber.toLowerCase().includes(q) ||
+            b.address.toLowerCase().includes(q)
+        );
+      }
+    }
 
     if (region && region !== "all") {
       brokers = brokers.filter(
@@ -56,8 +95,15 @@ export async function POST(req: NextRequest) {
       tinNumber,
       nationalIdNumber,
       faydaFinNumber,
+      faydaFinStatus = "unverified",
       status = "active",
       specialization = "Heavy Machinery",
+      dealsClosedCount = 0,
+      totalCommissionPaidETB = 0,
+      idDocumentUrl,
+      idDocumentName,
+      agreementDocumentUrl,
+      agreementDocumentName,
       payoutBank,
       notes,
     } = body;
@@ -85,6 +131,7 @@ export async function POST(req: NextRequest) {
       tinNumber: tinNumber || undefined,
       nationalIdNumber: nationalIdNumber || undefined,
       faydaFinNumber: faydaFinNumber || undefined,
+      faydaFinStatus: faydaFinStatus || "unverified",
       status: status || "active",
       specialization: specialization || "All Assets",
       payoutBank: payoutBank || {
@@ -92,10 +139,23 @@ export async function POST(req: NextRequest) {
         accountNumber: "1000000000000",
         accountHolderName: fullName,
       },
-      dealsClosedCount: 0,
-      totalCommissionPaidETB: 0,
+      dealsClosedCount: Number(dealsClosedCount) || 0,
+      totalCommissionPaidETB: Number(totalCommissionPaidETB) || 0,
+      idDocumentUrl: idDocumentUrl || undefined,
+      idDocumentName: idDocumentName || undefined,
+      agreementDocumentUrl: agreementDocumentUrl || undefined,
+      agreementDocumentName: agreementDocumentName || undefined,
       notes: notes || undefined,
     });
+
+    // Persist to Cloud Firestore if Admin SDK is configured
+    if (adminDb) {
+      try {
+        await adminDb.collection("brokers").doc(newBroker.id).set(newBroker);
+      } catch (cloudErr) {
+        console.warn("Firestore Admin syncBroker error:", cloudErr);
+      }
+    }
 
     return NextResponse.json(
       {
@@ -128,6 +188,12 @@ export async function PUT(req: NextRequest) {
     if (updates.commissionPct !== undefined) {
       updates.commissionPct = Number(updates.commissionPct);
     }
+    if (updates.dealsClosedCount !== undefined) {
+      updates.dealsClosedCount = Number(updates.dealsClosedCount);
+    }
+    if (updates.totalCommissionPaidETB !== undefined) {
+      updates.totalCommissionPaidETB = Number(updates.totalCommissionPaidETB);
+    }
 
     const updated = db.updateBroker(id, updates);
     if (!updated) {
@@ -135,6 +201,15 @@ export async function PUT(req: NextRequest) {
         { success: false, error: "Broker not found." },
         { status: 404 }
       );
+    }
+
+    // Persist update to Cloud Firestore
+    if (adminDb) {
+      try {
+        await adminDb.collection("brokers").doc(id).set(updated, { merge: true });
+      } catch (cloudErr) {
+        console.warn("Firestore Admin updateBroker error:", cloudErr);
+      }
     }
 
     return NextResponse.json({
@@ -173,6 +248,15 @@ export async function DELETE(req: NextRequest) {
         { success: false, error: "Broker not found or already deleted." },
         { status: 404 }
       );
+    }
+
+    // Delete from Cloud Firestore
+    if (adminDb) {
+      try {
+        await adminDb.collection("brokers").doc(id).delete();
+      } catch (cloudErr) {
+        console.warn("Firestore Admin deleteBroker error:", cloudErr);
+      }
     }
 
     return NextResponse.json({

@@ -136,9 +136,11 @@ export interface PartnerOnboarding {
     ownerTier: 'individual_host' | 'corporate_partner';
   };
   ownerKycNidUrl?: string;
+  ownerKycNidName?: string;
   faydaFinNumber?: string;
   libreCertificateNo: string;
   libreDocUrl?: string;
+  libreDocName?: string;
   assetCategory: AssetCategory;
   condition: 'brand_new' | 'excellent' | 'good' | 'fair';
   make: string;
@@ -490,6 +492,7 @@ export interface Broker {
   tinNumber?: string;
   nationalIdNumber?: string;
   faydaFinNumber?: string;
+  faydaFinStatus?: 'verified' | 'pending' | 'unverified';
   status: 'active' | 'inactive' | 'suspended';
   specialization?: 'Heavy Machinery' | 'Commercial & Transport' | 'Passenger Cars' | 'Quarry & Earthmoving' | 'All Assets';
   payoutBank?: {
@@ -499,6 +502,10 @@ export interface Broker {
   };
   dealsClosedCount: number;
   totalCommissionPaidETB: number;
+  idDocumentUrl?: string;
+  idDocumentName?: string;
+  agreementDocumentUrl?: string;
+  agreementDocumentName?: string;
   notes?: string;
   createdAt: string;
 }
