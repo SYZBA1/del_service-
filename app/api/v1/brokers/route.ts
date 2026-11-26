@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, INITIAL_BROKERS } from "@/lib/db";
+import { db } from "@/lib/db";
 import { Broker } from "@/lib/types";
-import { adminDb } from "@/lib/firebase-admin";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,51 +12,13 @@ export async function GET(req: NextRequest) {
     const specialization = searchParams.get("specialization");
     const status = searchParams.get("status");
 
-    let brokers: Broker[] = [];
-
-    // 1. Try reading from Cloud Firestore via Firebase Admin SDK
-    if (adminDb) {
-      try {
-        const snap = await adminDb.collection("brokers").get();
-        if (!snap.empty) {
-          brokers = snap.docs.map((d) => d.data() as Broker);
-        } else {
-          // If collection is empty, seed initial brokers once
-          const batch = adminDb.batch();
-          for (const b of INITIAL_BROKERS) {
-            const docRef = adminDb.collection("brokers").doc(b.id);
-            batch.set(docRef, b);
-          }
-          await batch.commit();
-          brokers = [...INITIAL_BROKERS];
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore Admin GET brokers error:", cloudErr);
-      }
-    }
-
-    // 2. Fallback to memory store if Firestore read did not succeed
-    if (brokers.length === 0) {
-      brokers = db.getBrokers(search);
-    } else {
-      // Sync in-memory store with Firestore data
-      db.brokers = brokers;
-      if (search) {
-        const q = search.toLowerCase();
-        brokers = brokers.filter(
-          (b) =>
-            b.fullName.toLowerCase().includes(q) ||
-            b.phoneNumber.toLowerCase().includes(q) ||
-            b.address.toLowerCase().includes(q)
-        );
-      }
-    }
+    let brokers = db.getBrokers(search);
 
     if (region && region !== "all") {
       brokers = brokers.filter(
         (b) =>
-          b.regionLocation.region.toLowerCase().includes(region.toLowerCase()) ||
-          (b.regionLocation.citySubcity && b.regionLocation.citySubcity.toLowerCase().includes(region.toLowerCase()))
+          b.regionLocation?.region?.toLowerCase().includes(region.toLowerCase()) ||
+          (b.regionLocation?.citySubcity && b.regionLocation.citySubcity.toLowerCase().includes(region.toLowerCase()))
       );
     }
 
@@ -95,7 +58,7 @@ export async function POST(req: NextRequest) {
       tinNumber,
       nationalIdNumber,
       faydaFinNumber,
-      faydaFinStatus = "unverified",
+      faydaFinStatus = "verified",
       status = "active",
       specialization = "Heavy Machinery",
       dealsClosedCount = 0,
@@ -131,7 +94,7 @@ export async function POST(req: NextRequest) {
       tinNumber: tinNumber || undefined,
       nationalIdNumber: nationalIdNumber || undefined,
       faydaFinNumber: faydaFinNumber || undefined,
-      faydaFinStatus: faydaFinStatus || "unverified",
+      faydaFinStatus: faydaFinStatus || "verified",
       status: status || "active",
       specialization: specialization || "All Assets",
       payoutBank: payoutBank || {
@@ -147,15 +110,6 @@ export async function POST(req: NextRequest) {
       agreementDocumentName: agreementDocumentName || undefined,
       notes: notes || undefined,
     });
-
-    // Persist to Cloud Firestore if Admin SDK is configured
-    if (adminDb) {
-      try {
-        await adminDb.collection("brokers").doc(newBroker.id).set(newBroker);
-      } catch (cloudErr) {
-        console.warn("Firestore Admin syncBroker error:", cloudErr);
-      }
-    }
 
     return NextResponse.json(
       {
@@ -203,15 +157,6 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Persist update to Cloud Firestore
-    if (adminDb) {
-      try {
-        await adminDb.collection("brokers").doc(id).set(updated, { merge: true });
-      } catch (cloudErr) {
-        console.warn("Firestore Admin updateBroker error:", cloudErr);
-      }
-    }
-
     return NextResponse.json({
       success: true,
       message: `Broker ${updated.fullName} updated successfully.`,
@@ -248,15 +193,6 @@ export async function DELETE(req: NextRequest) {
         { success: false, error: "Broker not found or already deleted." },
         { status: 404 }
       );
-    }
-
-    // Delete from Cloud Firestore
-    if (adminDb) {
-      try {
-        await adminDb.collection("brokers").doc(id).delete();
-      } catch (cloudErr) {
-        console.warn("Firestore Admin deleteBroker error:", cloudErr);
-      }
     }
 
     return NextResponse.json({

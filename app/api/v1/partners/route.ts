@@ -1,49 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, generateMock8Sides, INITIAL_PARTNERS } from "@/lib/db";
+import { db, generateMock8Sides } from "@/lib/db";
 import { PartnerOnboarding } from "@/lib/types";
-import { adminDb } from "@/lib/firebase-admin";
-import { syncAssetToCloud, deleteAssetFromCloud } from "@/lib/firebase-cloud";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    let partners: PartnerOnboarding[] = [];
-
-    // 1. Try reading from Cloud Firestore via Firebase Admin SDK
-    if (adminDb) {
-      try {
-        const snap = await adminDb.collection("partners").get();
-        if (!snap.empty) {
-          partners = snap.docs.map((d) => d.data() as PartnerOnboarding);
-        } else {
-          // If Firestore collection is empty, seed initial partners once
-          const batch = adminDb.batch();
-          for (const p of INITIAL_PARTNERS) {
-            const docRef = adminDb.collection("partners").doc(p.id);
-            batch.set(docRef, p);
-          }
-          await batch.commit();
-          partners = [...INITIAL_PARTNERS];
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore Admin GET partners error:", cloudErr);
-      }
-    }
-
-    // 2. Fallback to memory store if Firestore read did not succeed
-    if (partners.length === 0) {
-      partners = db.getPartners();
-    } else {
-      // Sync in-memory store with Firestore data
-      db.partners = partners;
-    }
-
+    const partners = db.getPartners();
     return NextResponse.json({
       success: true,
       count: partners.length,
       data: partners,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to load partners" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to load partners" },
+      { status: 500 }
+    );
   }
 }
 
@@ -74,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     if (!ownerContact?.fullName || !ownerContact?.phoneNumber || !make || !model || !chassisOrSerialNumber || !libreCertificateNo) {
       return NextResponse.json(
-        { error: "Owner Name, Phone, Make, Model, Chassis/Serial Number, and Libre Certificate No are required." },
+        { success: false, error: "Owner Name, Phone, Make, Model, Chassis/Serial Number, and Libre Certificate No are required." },
         { status: 400 }
       );
     }
@@ -160,23 +133,6 @@ export async function POST(req: NextRequest) {
       specs,
     });
 
-    // Sync to Cloud Firestore if Admin SDK is configured
-    if (adminDb) {
-      try {
-        await adminDb.collection("partners").doc(result.partner.id).set(result.partner);
-        if (result.asset) {
-          await adminDb.collection("assets").doc(result.asset.id).set(result.asset);
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore Admin syncPartner error:", cloudErr);
-      }
-    }
-
-    // Also sync asset to cloud
-    if (result.asset) {
-      await syncAssetToCloud(result.asset);
-    }
-
     return NextResponse.json({
       success: true,
       message: `Partner '${ownerContact.fullName}' and asset '${make} ${model}' onboarded & synchronized to Fleet Registry.`,
@@ -184,7 +140,7 @@ export async function POST(req: NextRequest) {
       asset: result.asset,
     }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to onboard partner" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message || "Failed to onboard partner" }, { status: 500 });
   }
 }
 
@@ -194,21 +150,12 @@ export async function PUT(req: NextRequest) {
     const { id, ...updates } = body;
 
     if (!id) {
-      return NextResponse.json({ error: "Partner ID is required for update" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Partner ID is required for update" }, { status: 400 });
     }
 
     const updated = db.updatePartner(id, updates);
     if (!updated) {
-      return NextResponse.json({ error: `Partner with ID ${id} not found` }, { status: 404 });
-    }
-
-    // Persist update to Cloud Firestore
-    if (adminDb) {
-      try {
-        await adminDb.collection("partners").doc(id).set(updated, { merge: true });
-      } catch (cloudErr) {
-        console.warn("Firestore Admin updatePartner error:", cloudErr);
-      }
+      return NextResponse.json({ success: false, error: `Partner with ID ${id} not found` }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -217,7 +164,7 @@ export async function PUT(req: NextRequest) {
       data: updated,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to update partner" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message || "Failed to update partner" }, { status: 500 });
   }
 }
 
@@ -227,32 +174,12 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Partner ID is required" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Partner ID is required" }, { status: 400 });
     }
-
-    const partner = db.partners.find((p) => p.id === id);
-    const assetPlate = partner?.plateNumber || partner?.chassisOrSerialNumber;
-    const linkedAsset = assetPlate ? db.assets.find((a) => a.plateNumber === assetPlate || a.serialNumber === assetPlate) : null;
 
     const ok = db.deletePartner(id);
     if (!ok) {
-      return NextResponse.json({ error: `Partner with ID ${id} not found` }, { status: 404 });
-    }
-
-    // Delete from Cloud Firestore
-    if (adminDb) {
-      try {
-        await adminDb.collection("partners").doc(id).delete();
-        if (linkedAsset) {
-          await adminDb.collection("assets").doc(linkedAsset.id).delete();
-        }
-      } catch (cloudErr) {
-        console.warn("Firestore Admin deletePartner error:", cloudErr);
-      }
-    }
-
-    if (linkedAsset) {
-      await deleteAssetFromCloud(linkedAsset.id);
+      return NextResponse.json({ success: false, error: `Partner with ID ${id} not found` }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -260,6 +187,6 @@ export async function DELETE(req: NextRequest) {
       message: `Partner ${id} and linked asset removed successfully`,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to delete partner" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message || "Failed to delete partner" }, { status: 500 });
   }
 }

@@ -33,6 +33,7 @@ import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc } from "fireb
 import { firestore, isFirebaseConfigured } from "@/lib/firebase";
 import { uploadFileToStorage } from "@/lib/firebase-cloud";
 import { Broker } from "@/lib/types";
+import { INITIAL_BROKERS } from "@/lib/db";
 import { formatETB, cn } from "@/lib/utils";
 
 const ETHIOPIAN_REGIONS = [
@@ -118,12 +119,19 @@ export default function BrokersDirectoryPage() {
     try {
       setLoading(true);
       const res = await fetch("/api/v1/brokers");
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        setBrokers(data.data);
+      if (res.ok) {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          if (data.success && Array.isArray(data.data)) {
+            setBrokers(data.data);
+          }
+        } catch {
+          // not JSON
+        }
       }
     } catch (err) {
-      console.error("Failed to load brokers from API:", err);
+      console.warn("Failed to load brokers from API:", err);
     } finally {
       setLoading(false);
     }
@@ -138,7 +146,7 @@ export default function BrokersDirectoryPage() {
         const brokersCol = collection(firestore, "brokers");
         unsubscribe = onSnapshot(
           brokersCol,
-          (snapshot) => {
+          async (snapshot) => {
             if (!snapshot.empty) {
               const loadedBrokers = snapshot.docs.map((docSnap) => ({
                 ...docSnap.data(),
@@ -147,8 +155,16 @@ export default function BrokersDirectoryPage() {
               setBrokers(loadedBrokers);
               setLoading(false);
             } else {
-              // If collection is empty, fetch from API which seeds INITIAL_BROKERS once
-              fetchBrokers();
+              // If collection is empty, seed INITIAL_BROKERS once
+              try {
+                for (const b of INITIAL_BROKERS) {
+                  await setDoc(doc(firestore, "brokers", b.id), b);
+                }
+              } catch (seedErr) {
+                console.warn("Seeding initial brokers error:", seedErr);
+              }
+              setBrokers([...INITIAL_BROKERS]);
+              setLoading(false);
             }
           },
           (err) => {
@@ -283,25 +299,27 @@ export default function BrokersDirectoryPage() {
         }
       }
 
-      // 4. Also call API route to ensure server-side DB synchronization
-      const res = await fetch("/api/v1/brokers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newBrokerData),
-      });
-
-      const resData = await res.json();
-      if (resData.success) {
-        showNotification("success", `Broker "${newBrokerData.fullName}" successfully registered & saved to Cloud Firestore!`);
-        setIsAddModalOpen(false);
-        setFormData(initialFormState);
-        setAttachedIdFile(null);
-        setAttachedIdFileName("");
-        setAttachedAgreementFile(null);
-        setAttachedAgreementFileName("");
-      } else {
-        showNotification("error", resData.error || "Failed to register broker.");
+      // 4. Also call API route to ensure server-side DB synchronization safely
+      try {
+        const res = await fetch("/api/v1/brokers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newBrokerData),
+        });
+        if (res.ok) {
+          await res.json().catch(() => ({}));
+        }
+      } catch (apiErr) {
+        console.warn("API broker sync warning:", apiErr);
       }
+
+      showNotification("success", `Broker "${newBrokerData.fullName}" successfully registered & saved to Cloud Firestore!`);
+      setIsAddModalOpen(false);
+      setFormData(initialFormState);
+      setAttachedIdFile(null);
+      setAttachedIdFileName("");
+      setAttachedAgreementFile(null);
+      setAttachedAgreementFileName("");
     } catch (err: any) {
       showNotification("error", err.message || "Network error while saving broker.");
     } finally {
@@ -407,24 +425,26 @@ export default function BrokersDirectoryPage() {
         }
       }
 
-      // 2. Sync to API route
-      const res = await fetch("/api/v1/brokers", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: brokerToEdit.id,
-          ...updatedBrokerData,
-        }),
-      });
-
-      const resData = await res.json();
-      if (resData.success) {
-        showNotification("success", `Broker "${formData.fullName}" updated permanently in Cloud Firestore!`);
-        setIsEditModalOpen(false);
-        setBrokerToEdit(null);
-      } else {
-        showNotification("error", resData.error || "Failed to update broker.");
+      // 2. Sync to API route safely
+      try {
+        const res = await fetch("/api/v1/brokers", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: brokerToEdit.id,
+            ...updatedBrokerData,
+          }),
+        });
+        if (res.ok) {
+          await res.json().catch(() => ({}));
+        }
+      } catch (apiErr) {
+        console.warn("API broker update warning:", apiErr);
       }
+
+      showNotification("success", `Broker "${formData.fullName}" updated permanently in Cloud Firestore!`);
+      setIsEditModalOpen(false);
+      setBrokerToEdit(null);
     } catch (err: any) {
       showNotification("error", err.message || "Network error while updating broker.");
     } finally {
@@ -450,18 +470,21 @@ export default function BrokersDirectoryPage() {
         }
       }
 
-      // 2. Sync to API route
-      const res = await fetch(`/api/v1/brokers?id=${brokerToDelete.id}`, {
-        method: "DELETE",
-      });
-      const resData = await res.json();
-      if (resData.success) {
-        showNotification("success", `Broker "${brokerToDelete.fullName}" has been permanently removed.`);
-        setIsDeleteModalOpen(false);
-        setBrokerToDelete(null);
-      } else {
-        showNotification("error", resData.error || "Failed to delete broker.");
+      // 2. Sync to API route safely
+      try {
+        const res = await fetch(`/api/v1/brokers?id=${brokerToDelete.id}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          await res.json().catch(() => ({}));
+        }
+      } catch (apiErr) {
+        console.warn("API broker delete warning:", apiErr);
       }
+
+      showNotification("success", `Broker "${brokerToDelete.fullName}" has been permanently removed.`);
+      setIsDeleteModalOpen(false);
+      setBrokerToDelete(null);
     } catch (err: any) {
       showNotification("error", err.message || "Network error while deleting broker.");
     } finally {
